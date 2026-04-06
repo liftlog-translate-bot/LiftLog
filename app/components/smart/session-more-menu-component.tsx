@@ -9,8 +9,8 @@ import { useTranslate } from '@tolgee/react';
 import { useState } from 'react';
 import { ExerciseBlueprint } from '@/models/blueprint-models';
 import { EmptyExerciseBlueprint } from '@/models/blueprint-models';
-import FullScreenDialog from '@/components/presentation/full-screen-dialog';
-import { ExerciseEditor } from '@/components/presentation/exercise-editor';
+import FullScreenDialog from '@/components/presentation/foundation/full-screen-dialog';
+import { ExerciseEditor } from '@/components/presentation/workout-editor/exercise-editor';
 import { useAppSelector, useAppSelectorWithArg } from '@/store';
 import { UnknownAction } from '@reduxjs/toolkit';
 import { Appbar, Menu, TextInput } from 'react-native-paper';
@@ -73,7 +73,7 @@ export default function SessionMoreMenuComponent(props: {
           }}
           testID="session-add-exercise"
           leadingIcon={'add'}
-          title={t('AddExercise')}
+          title={t('exercise.add.title')}
         />
         <Menu.Item
           onPress={() => {
@@ -82,14 +82,15 @@ export default function SessionMoreMenuComponent(props: {
           }}
           testID="session-edit"
           leadingIcon={'edit'}
-          title={t('Edit workout')}
+          title={t('workout.edit.button')}
         />
       </Menu>
       <FullScreenDialog
-        title={t('AddExercise')}
-        action={t('Add')}
+        title={t('exercise.add.title')}
+        action={t('generic.add.button')}
         open={exerciseEditorOpen}
         onAction={handleAddExercise}
+        avoidKeyboard
         onClose={() => setExerciseEditorOpen(false)}
       >
         {editingExerciseBlueprint ? (
@@ -131,8 +132,8 @@ function WorkoutEditor(props: {
 
   return (
     <FullScreenDialog
-      title={t('Edit workout')}
-      action={t('Save')}
+      title={t('workout.edit.button')}
+      action={t('generic.save.button')}
       open={open}
       onAction={handleSaveWorkout}
       onClose={() => {
@@ -142,7 +143,7 @@ function WorkoutEditor(props: {
     >
       <View style={{ gap: spacing[2] }}>
         <TextInput
-          label={t('WorkoutName')}
+          label={t('workout.name.label')}
           testID="workout-name"
           style={{ marginBottom: spacing[2] }}
           value={editorWorkout.blueprint.name}
@@ -155,7 +156,7 @@ function WorkoutEditor(props: {
           }
         />
         <TextInput
-          label={t('PlanNotes')}
+          label={t('plan.notes.label')}
           testID="workout-notes"
           style={{ marginBottom: spacing[2] }}
           defaultValue={editorWorkout.blueprint.notes}

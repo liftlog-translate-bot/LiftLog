@@ -3,10 +3,9 @@ import { useTranslate } from '@tolgee/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent, View } from 'react-native';
 import { AnimatedFAB, Icon, List, TextInput } from 'react-native-paper';
-import TouchableRipple from '@/components/presentation/gesture-wrappers/touchable-ripple';
-import { AccordionItem } from '@/components/presentation/accordion-item';
-import { useScroll } from '@/hooks/useScollListener';
-import { FlashList, useRecyclingState } from '@shopify/flash-list';
+import TouchableRipple from '@/components/presentation/foundation/gesture-wrappers/touchable-ripple';
+import { AccordionItem } from '@/components/presentation/foundation/accordion-item';
+import { useScroll } from '@/hooks/useScrollListener';
 import {
   deleteExercise as deleteExerciseAction,
   ExerciseDescriptor,
@@ -21,8 +20,10 @@ import { uuid } from '@/utils/uuid';
 import { SwipeRow } from 'react-native-swipe-list-view';
 import { showSnackbar } from '@/store/app';
 import { useMountEffect } from '@/hooks/useMountEffect';
-import ExerciseMuscleSelector from '@/components/presentation/exercise-muscle-selector';
-import ExerciseFilterer from '@/components/presentation/exercise-filterer';
+import ExerciseMuscleSelector from '@/components/presentation/workout-editor/exercise-muscle-selector';
+import ExerciseFilterer from '@/components/presentation/workout-editor/exercise-filterer';
+import { LegendList } from '@legendapp/list';
+import { getState } from '@/store/store';
 
 function ExerciseListItem({
   exerciseId,
@@ -35,19 +36,16 @@ function ExerciseListItem({
 }) {
   const { colors } = useAppTheme();
   const exercise = useAppSelectorWithArg(selectExerciseById, exerciseId);
-  const [expanded, setExpanded] = useRecyclingState(expand, [
-    exerciseId,
-    expand,
-  ]);
-  const [listExpanded, setListExpanded] = useRecyclingState(expand, [
-    exerciseId,
-    expand,
-  ]);
+  const [expanded, setExpanded] = useState(expand);
+  const [listExpanded, setListExpanded] = useState(expand);
 
   const rowRef = useRef<SwipeRow<unknown>>(null);
   useEffect(() => {
     rowRef.current?.closeRowWithoutAnimation();
   }, [exerciseId]);
+  if (!exercise) {
+    return <View></View>;
+  }
 
   return (
     // @ts-expect-error -- Swipe row seems to have trouble with typescript, it works
@@ -153,7 +151,7 @@ export default function ExerciseManager() {
   };
 
   const deleteExercise = (id: string) => {
-    const exercise = exercises[id];
+    const exercise = getState().storedSessions.savedExercises[id];
     if (!exercise) {
       return;
     }
@@ -162,8 +160,8 @@ export default function ExerciseManager() {
     dispatch(deleteExerciseAction(id));
     dispatch(
       showSnackbar({
-        text: t('{name} deleted', { name: exercise.name }),
-        action: t('Undo'),
+        text: t('deletion.item_deleted.message', { name: exercise.name }),
+        action: t('generic.undo.button'),
         dispatchAction: [
           updateExercise({ id, exercise }),
           setFilteredExerciseIdsAction(filteredExerciseIds),
@@ -188,7 +186,7 @@ export default function ExerciseManager() {
   };
   return (
     <View style={{ flex: 1 }}>
-      <FlashList
+      <LegendList
         onScroll={onScroll}
         style={{ flex: 1 }}
         data={flatListItems}
@@ -218,7 +216,7 @@ export default function ExerciseManager() {
         }}
         extended={fabExtended}
         variant="secondary"
-        label={t('Add exercise')}
+        label={t('exercise.add.button')}
         onPress={addExercise}
         icon={'add'}
         testID="exercise-add-fab"
@@ -250,13 +248,13 @@ function ExerciseEditSheet({
       }}
     >
       <TextInput
-        label={t('Exercise name')}
+        label={t('exercise.name.label')}
         value={exercise.name}
         onChangeText={(name) => update({ name })}
         testID="exercise-name-input"
       />
       <TextInput
-        label={t('Instructions')}
+        label={t('generic.instructions.label')}
         value={exercise.instructions}
         onChangeText={(instructions) => update({ instructions })}
         multiline

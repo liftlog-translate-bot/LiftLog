@@ -1,14 +1,11 @@
 import { google, LiftLog } from '@/gen/proto';
-import {
-  toFeedStateDao,
-  toProgramBlueprintDao,
-  toSessionDao,
-} from '@/models/storage/conversions.to-dao';
 import { addEffect } from '@/store/store';
 import { selectAllPrograms } from '@/store/program';
 import { exportData } from '@/store/settings';
 import { streamToUint8Array } from '@/utils/stream';
 import 'compression-streams-polyfill';
+import { toFeedStateDao } from '../feed';
+import { DateTimeFormatter, LocalDateTime } from '@js-joda/core';
 
 export function addExportBackupEffects() {
   addEffect(
@@ -20,16 +17,13 @@ export function addExportBackupEffects() {
       const sessions = progressRepository.getOrderedSessions().toArray();
       const savedPrograms = selectAllPrograms(getState());
       const savedProgramsDao = Object.fromEntries(
-        savedPrograms.map(({ id, program }) => [
-          id,
-          toProgramBlueprintDao(program),
-        ]),
+        savedPrograms.map(({ id, program }) => [id, program.toDao()]),
       );
       const activeProgramId = getState().program.activeProgramId;
       const feedStateDao = includeFeed ? toFeedStateDao(getState().feed) : null;
 
       const dao = new LiftLog.Ui.Models.ExportedDataDao.ExportedDataDaoV2({
-        sessions: sessions.map(toSessionDao),
+        sessions: sessions.map((x) => x.toDao()),
         activeProgramId: new google.protobuf.StringValue({
           value: activeProgramId,
         }),
@@ -49,9 +43,15 @@ export function addExportBackupEffects() {
 
       await writePromise;
       await writer.close();
+      const now = LocalDateTime.now()
+        .withNano(0)
+        .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        .replaceAll(':', '')
+        .replaceAll('T', '_')
+        .replaceAll('-', '');
 
       await fileExportService.exportBytes(
-        'export.liftlogbackup.gz',
+        `export.liftlogbackup.${now}.gz`,
         await gzippedPromise,
         'application/octet-stream',
       );

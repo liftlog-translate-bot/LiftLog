@@ -1,11 +1,12 @@
-import { Remote } from '@/components/presentation/remote';
+import { Remote } from '@/components/presentation/foundation/remote';
 import SharedItem from '@/components/smart/shared-item';
 import { RemoteData } from '@/models/remote';
 import { useAppSelector } from '@/store';
 import { fetchSharedItem, selectSharedItem, setSharedItem } from '@/store/feed';
 import { fromUrlSafeHexString } from '@/utils/to-url-safe-hex-string';
 import { useTranslate } from '@tolgee/react';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 
 export default function SharedItemPage() {
@@ -16,7 +17,7 @@ export default function SharedItemPage() {
   const sharedRemote = useAppSelector(selectSharedItem);
   const dispatch = useDispatch();
   const { t } = useTranslate();
-  const fetch = () => {
+  const fetch = useCallback(() => {
     const parsedKey = fromUrlSafeHexString(k);
     if (parsedKey) {
       dispatch(fetchSharedItem({ id, key: { value: parsedKey } }));
@@ -27,15 +28,15 @@ export default function SharedItemPage() {
         ),
       );
     }
-  };
-  useFocusEffect(() => {
+  }, [k, dispatch, id]);
+  useEffect(() => {
     fetch();
-  });
+  }, [fetch]);
   return (
     <>
       <Stack.Screen
         options={{
-          title: t('SharedItem'),
+          title: t('feed.shared_item.title'),
         }}
       />
       <Remote

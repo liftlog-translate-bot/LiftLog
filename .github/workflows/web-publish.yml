@@ -5,8 +5,20 @@
 name: Release Web
 
 on:
-  release:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: "Version code (e.g., 1.0.0)"
+        required: true
+        type: string
+      release_notes:
+        description: "Release notes to display in the store"
+        required: true
+        type: string
+      commit_sha:
+        description: "Commit SHA to checkout (optional, defaults to the branch head)"
+        required: false
+        type: string
 
 jobs:
   build:
@@ -24,7 +36,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha || github.ref }}
       - name: Setup Node
         uses: actions/setup-node@v6
         with:

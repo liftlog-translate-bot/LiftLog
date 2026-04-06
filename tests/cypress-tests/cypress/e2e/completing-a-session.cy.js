@@ -4,6 +4,7 @@
 describe('Completing a session', () => {
   beforeEach(() => {
     cy.visit('/')
+    cy.completeWelcomeWizard()
   })
 
   describe('When a user adds a freeform workout', () => {
@@ -43,11 +44,13 @@ describe('Completing a session', () => {
       cy.getByTestId('session-add-exercise').click()
       cy.dialog().find('input').first().click().type('Jogging (time only)')
       cy.dialog().findByTestId('cardio-button').click()
+      // Disable distance tracking
+      cy.dialog().findByTestId('track-distance-switch').click()
 
       cy.dialog().findByTestId("dialog-action").click()
 
       cy.getByTestId('add-tracker-button').click()
-      cy.getByTestId('add-tracker-menu-Time').click()
+      cy.getByTestId('add-tracker-menu-time').click()
       cy.getByTestId('cardio-timer-play-pause').click().wait(1100).click()
       cy.getByTestId('timer-editor-seconds').should('have.value', '01')
 
@@ -61,7 +64,7 @@ describe('Completing a session', () => {
       cy.dialog().findByTestId("dialog-action").click()
 
       cy.getByTestId('add-tracker-button').click()
-      cy.getByTestId('add-tracker-menu-Distance').click()
+      cy.getByTestId('add-tracker-menu-distance').click()
     })
   })
 
@@ -126,7 +129,7 @@ describe('Completing a session', () => {
         cy.getByTestId('history-list').findByTestId('session-summary-title').should('contain.text', 'Workout A').should('contain.text', '22').should('contain.text', 'May').should('contain.text', '2023')
       })
 
-      it('can complete a workout while switching to per set weights with it progressing properly', () => {
+      it('can complete a workout with different weights per set and it progresses properly', () => {
         cy.contains('Start workout').click()
 
         updateWeight(0, 20)
@@ -204,7 +207,8 @@ describe('Completing a session', () => {
         cy.getByTestId('exercise-edit-menu-button').first().click()
 
         // Update the number of reps to 6
-        cy.dialog().findByTestId('exercise-reps').should('contain.text', '5').findByTestId('fixed-increment').click()
+        cy.dialog().findByTestId('exercise-reps').findByTestId('fixed-value-input').should('contain.value', '5')
+        cy.dialog().findByTestId('exercise-reps').findByTestId('fixed-increment').click()
         cy.dialog().findByTestId('dialog-action').click()
 
         // Complete all sets
@@ -213,6 +217,9 @@ describe('Completing a session', () => {
         }
 
         cy.getByTestId('save-session-button').click()
+
+        // Close the "Update plan" dialog
+        cy.dialog().findByTestId('dialog-close').click()
 
         cy.getByTestId('session-summary-title').eq(0).should('contain.text', 'Workout B')
         cy.contains('Start workout').click()

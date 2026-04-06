@@ -1,51 +1,17 @@
 import { google, LiftLog } from '@/gen/proto';
-import {
-  SessionBlueprint,
-  WeightedExerciseBlueprint,
-  Rest,
-  ProgramBlueprint,
-  ExerciseBlueprint,
-  CardioExerciseBlueprint,
-  CardioTarget,
-  WeightedExerciseBlueprintPOJO,
-  CardioExerciseBlueprintPOJO,
-  DistanceUnit,
-} from '@/models/blueprint-models';
-import {
-  PotentialSet,
-  RecordedWeightedExercise,
-  RecordedSet,
-  Session,
-  RecordedExercise,
-  RecordedCardioExercise,
-} from '@/models/session-models';
+import { uuidStringify } from '@/utils/uuid';
 import Long from 'long';
-import {
-  FeedIdentity,
-  FeedItem,
-  FeedUser,
-  FollowRequest,
-  FollowRequestPOJO,
-  SessionFeedItem,
-  SharedItem,
-  SharedProgramBlueprint,
-} from '@/models/feed-models';
+import { UuidConversionError } from './uuid-conversion-error';
 import {
   Duration,
   Instant,
   LocalDate,
-  LocalDateTime,
   LocalTime,
+  OffsetDateTime,
+  ZoneOffset,
 } from '@js-joda/core';
 import BigNumber from 'bignumber.js';
-import { UuidConversionError } from '@/models/storage/uuid-conversion-error';
-import { FeedState } from '@/store/feed';
-import { RemoteData } from '@/models/remote';
-import { uuidStringify } from '@/utils/uuid';
-import { Weight, WeightUnit } from '@/models/weight';
-import { match, P } from 'ts-pattern';
 
-// Converts a UUID DAO to a string
 export function fromUuidDao(
   dao: LiftLog.Ui.Models.IUuidDao | null | undefined,
 ): string {
@@ -113,13 +79,20 @@ export function fromDateOnlyDao(
   return LocalDate.of(dao.year!, dao.month!, dao.day!);
 }
 
-function fromDateTimeDao(
+export function fromDateTimeDao(
   dao: LiftLog.Ui.Models.IDateTimeDao | null | undefined,
-): LocalDateTime | undefined {
+): OffsetDateTime | undefined {
   if (!dao) {
     return undefined;
   }
-  return fromDateOnlyDao(dao.date).atTime(fromTimeOnlyDao(dao.time));
+  const localDateTime = fromDateOnlyDao(dao.date).atTime(
+    fromTimeOnlyDao(dao.time),
+  );
+  return localDateTime.atOffset(
+    dao.offset
+      ? ZoneOffset.ofTotalSeconds(dao.offset.totalSeconds!)
+      : ZoneOffset.systemDefault().rules().offsetOfLocalDateTime(localDateTime),
+  );
 }
 
 export function fromTimestampDao(
@@ -133,247 +106,6 @@ export function fromTimestampDao(
   return Instant.ofEpochSecond(dao!.seconds!.toNumber());
 }
 
-// Converts a RecordedSet DAO to a RecordedSetPOJO
-export function fromRecordedSetDao(
-  sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
-  recordedSetDao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedSetDaoV2,
-): RecordedSet {
-  const dateCompleted = recordedSetDao.completionDate ?? sessionDate;
-
-  return RecordedSet.fromPOJO({
-    completionDateTime: fromDateOnlyDao(dateCompleted).atTime(
-      fromTimeOnlyDao(recordedSetDao.completionTime),
-    ),
-    repsCompleted: recordedSetDao.repsCompleted!,
-  });
-}
-
-// Converts a PotentialSet DAO to a PotentialSetPOJO
-function fromPotentialSetDao(
-  sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
-  dao:
-    | LiftLog.Ui.Models.SessionHistoryDao.IPotentialSetDaoV2
-    | null
-    | undefined,
-): PotentialSet {
-  if (!dao) {
-    throw new Error('PotentialSetDao cannot be null');
-  }
-  return PotentialSet.fromPOJO({
-    set: dao.recordedSet
-      ? fromRecordedSetDao(sessionDate, dao.recordedSet).toPOJO()
-      : undefined,
-    weight: fromWeight(
-      fromDecimalDao(dao.weightValue) ?? BigNumber(0),
-      dao.weightUnit,
-    ),
-  });
-}
-
-// Converts a RecordedExercise DAO to a RecordedExercisePOJO
-function fromRecordedExerciseDao(
-  sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
-  dao:
-    | LiftLog.Ui.Models.SessionHistoryDao.IRecordedExerciseDaoV2
-    | null
-    | undefined,
-): RecordedExercise {
-  if (!dao) {
-    throw new Error('Recorded exercise DAO cannot be null');
-  }
-  if (dao.type === LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO) {
-    return RecordedCardioExercise.fromPOJO({
-      notes: dao.notes?.value ?? undefined,
-      blueprint: fromExerciseBlueprintDao(
-        dao.exerciseBlueprint,
-      ).toPOJO() as CardioExerciseBlueprintPOJO,
-      distance:
-        dao.distanceValue && dao.distanceUnit
-          ? {
-              value: fromDecimalDao(dao.distanceValue),
-              unit: dao.distanceUnit.value as DistanceUnit,
-            }
-          : undefined,
-      duration: fromDurationDao(dao.duration),
-      completionDateTime: fromDateTimeDao(dao.completionDateTime),
-      incline: fromDecimalDao(dao.incline),
-      resistance: fromDecimalDao(dao.resistance),
-    });
-  }
-  return RecordedWeightedExercise.fromPOJO({
-    notes: dao.notes?.value ?? undefined,
-    blueprint: fromExerciseBlueprintDao(
-      dao.exerciseBlueprint,
-    ).toPOJO() as WeightedExerciseBlueprintPOJO,
-    potentialSets: dao.potentialSets!.map((x) =>
-      fromPotentialSetDao(sessionDate, x).toPOJO(),
-    ),
-  });
-}
-
-// Converts a Session DAO to a SessionPOJO
-export function fromSessionDao(
-  dao: LiftLog.Ui.Models.SessionHistoryDao.ISessionDaoV2 | null | undefined,
-): Session {
-  if (!dao) {
-    throw new Error('Session dao cannot be null');
-  }
-  const recordedExercises =
-    dao.recordedExercises?.map((x) =>
-      fromRecordedExerciseDao(dao.date!, x).toPOJO(),
-    ) ?? [];
-  return Session.fromPOJO({
-    id: fromUuidDao(dao.id),
-    blueprint: SessionBlueprint.fromPOJO({
-      name: dao.sessionName!,
-      exercises: recordedExercises.map((x) => x.blueprint),
-      notes: dao.blueprintNotes ?? '',
-    }).toPOJO(),
-    bodyweight: dao.bodyweightValue
-      ? fromWeight(fromDecimalDao(dao.bodyweightValue), dao.bodyweightUnit)
-      : undefined,
-    date: fromDateOnlyDao(dao.date),
-    recordedExercises,
-  });
-}
-
-function fromWeight(
-  value: BigNumber,
-  daoUnit: LiftLog.Ui.Models.WeightUnit | null | undefined,
-): Weight {
-  const unit = match(daoUnit)
-    .returnType<WeightUnit>()
-    .with(LiftLog.Ui.Models.WeightUnit.NIL, () => 'nil')
-    .with(LiftLog.Ui.Models.WeightUnit.KILOGRAMS, () => 'kilograms')
-    .with(LiftLog.Ui.Models.WeightUnit.POUNDS, () => 'pounds')
-    .with(P.nullish, () => 'nil')
-    .run();
-
-  return new Weight(value, unit);
-}
-
-// Converts a SessionHistory DAO to a Map of Sessions
-export function fromSessionHistoryDao(
-  sessionHistoryModel: LiftLog.Ui.Models.SessionHistoryDao.SessionHistoryDaoV2,
-): Map<string, Session> {
-  return sessionHistoryModel.completedSessions.reduce((map, item) => {
-    map.set(
-      fromUuidDao(item.id),
-      Session.fromPOJO(fromSessionDao(item).toPOJO()),
-    );
-    return map;
-  }, new Map<string, Session>());
-}
-
-// Converts a SessionBlueprint DAO to a SessionBlueprint
-export function fromSessionBlueprintDao(
-  dao: LiftLog.Ui.Models.SessionBlueprintDao.ISessionBlueprintDaoV2,
-): SessionBlueprint {
-  return new SessionBlueprint(
-    dao.name!,
-    dao.exerciseBlueprints!.map(fromExerciseBlueprintDao),
-    dao.notes ?? '',
-  );
-}
-
-export function fromExerciseBlueprintDao(
-  dao:
-    | LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2
-    | null
-    | undefined,
-): ExerciseBlueprint {
-  if (!dao) {
-    throw new Error('ExerciseBlueprint dao should not be null');
-  }
-  if (dao.type === LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO) {
-    return new CardioExerciseBlueprint(
-      dao.name!,
-      fromCardioTargetDao(dao.cardioTarget!),
-      dao.trackDuration ?? false,
-      dao.trackDistance ?? false,
-      dao.trackResistance ?? false,
-      dao.trackIncline ?? false,
-      dao.notes ?? '',
-      dao.link ?? '',
-    );
-  }
-  return new WeightedExerciseBlueprint(
-    dao.name!,
-    dao.sets!,
-    dao.repsPerSet!,
-    fromDecimalDao(dao.weightIncreaseOnSuccess) ?? BigNumber(0),
-    fromRestDao(dao.restBetweenSets!),
-    dao.supersetWithNext ?? false,
-    dao.notes ?? '',
-    dao.link ?? '',
-  );
-}
-
-function fromCardioTargetDao(
-  dao: LiftLog.Ui.Models.SessionBlueprintDao.ICardioTarget,
-): CardioTarget {
-  return {
-    type: dao.type as 'distance' | 'time',
-    value:
-      dao.type === 'distance'
-        ? {
-            value: fromDecimalDao(dao.distanceValue) ?? BigNumber(0),
-            unit: dao.distanceUnit ?? 'metre',
-          }
-        : fromDurationDao(dao.timeValue)!,
-  } as CardioTarget;
-}
-
-export function fromRestDao(
-  dao: LiftLog.Ui.Models.SessionBlueprintDao.IRestDaoV2,
-): Rest {
-  return {
-    minRest: fromDurationDao(dao.minRest) ?? Duration.ZERO,
-    maxRest: fromDurationDao(dao.maxRest) ?? Duration.ZERO,
-    failureRest: fromDurationDao(dao.failureRest) ?? Duration.ZERO,
-  };
-}
-
-// Converts a ProgramBlueprint DAO to a ProgramBlueprint
-export function fromProgramBlueprintDao(
-  dao: LiftLog.Ui.Models.ProgramBlueprintDao.IProgramBlueprintDaoV1,
-): ProgramBlueprint {
-  return new ProgramBlueprint(
-    dao.name!,
-    dao.sessions!.map(fromSessionBlueprintDao),
-    dao.lastEdited ? fromDateOnlyDao(dao.lastEdited) : LocalDate.now(),
-  );
-}
-
-export function fromFeedStateDao(dao: LiftLog.Ui.Models.IFeedStateDaoV1) {
-  return {
-    feed: dao.feedItems?.map(fromFeedItemDao).map((x) => x.toPOJO()) ?? [],
-    followedUsers:
-      (dao.followedUsers &&
-        Object.fromEntries(
-          dao.followedUsers
-            .map(fromFeedUserDao)
-            .map((x) => [x.id, x.toPOJO()] as const),
-        )) ??
-      {},
-    identity:
-      (dao.identity &&
-        RemoteData.success(fromFeedIdentityDao(dao.identity).toPOJO())) ??
-      RemoteData.notAsked(),
-    followRequests: dao.followRequests?.map(fromFollowRequestDao) ?? [],
-    followers:
-      (dao.followers &&
-        Object.fromEntries(
-          dao.followers
-            .map(fromFeedUserDao)
-            .map((x) => [x.id, x.toPOJO()] as const),
-        )) ??
-      {},
-    unpublishedSessionIds: dao.unpublishedSessionIds?.map(fromUuidDao) ?? [],
-    revokedFollowSecrets: dao.revokedFollowSecrets ?? [],
-  } satisfies Partial<FeedState>;
-}
-
 export function fromDurationDao(
   duration: google.protobuf.IDuration | null | undefined,
 ) {
@@ -383,92 +115,4 @@ export function fromDurationDao(
   return Duration.ofSeconds(
     Long.fromValue(duration.seconds!).toNumber(),
   ).plusNanos(Long.fromValue(duration.nanos!).toNumber());
-}
-
-export function fromFeedItemDao(
-  dao: LiftLog.Ui.Models.IFeedItemDaoV1,
-): FeedItem {
-  return new SessionFeedItem(
-    fromUuidDao(dao.userId),
-    fromUuidDao(dao.eventId),
-    fromTimestampDao(dao.timestamp),
-    fromTimestampDao(dao.timestamp),
-    fromSessionDao(dao.session),
-  );
-}
-
-// Converts a FeedIdentity DAO to a FeedIdentity
-export function fromFeedIdentityDao(
-  dao: LiftLog.Ui.Models.IFeedIdentityDaoV1,
-): FeedIdentity {
-  return new FeedIdentity(
-    fromUuidDao(dao.id),
-    dao.lookup?.value ?? '',
-    { value: Uint8Array.from(dao.aesKey!) },
-    {
-      publicKey: { spkiPublicKeyBytes: Uint8Array.from(dao.publicKey!) },
-      privateKey: { pkcs8PrivateKeyBytes: Uint8Array.from(dao.privateKey!) },
-    },
-    dao.password!,
-    dao.name?.value ?? undefined,
-    (dao.profilePicture && Uint8Array.from(dao.profilePicture)) ?? undefined,
-    dao.publishBodyweight ?? false,
-    dao.publishPlan ?? false,
-    dao.publishWorkouts ?? false,
-  );
-}
-
-// Converts a FeedUser DAO to a FeedUser
-export function fromFeedUserDao(
-  dao: LiftLog.Ui.Models.IFeedUserDaoV1,
-): FeedUser {
-  return new FeedUser(
-    fromUuidDao(dao.id),
-    { spkiPublicKeyBytes: Uint8Array.from(dao.publicKey!) },
-    dao.name?.value ?? undefined,
-    dao.nickname?.value ?? undefined,
-    dao.currentPlan ? fromCurrentPlanDao(dao.currentPlan) : [],
-    (dao.profilePicture && Uint8Array.from(dao.profilePicture)) ?? undefined,
-    dao.aesKey?.length ? { value: Uint8Array.from(dao.aesKey) } : undefined,
-    dao.followSecret?.value ?? undefined,
-  );
-}
-
-// Converts a CurrentPlan DAO to a CurrentPlan
-export function fromCurrentPlanDao(
-  dao: LiftLog.Ui.Models.ICurrentPlanDaoV1,
-): SessionBlueprint[] {
-  return dao.sessions!.map(fromSessionBlueprintDao);
-}
-
-export function fromCurrentSessionDao(
-  dao: LiftLog.Ui.Models.CurrentSessionStateDao.ICurrentSessionStateDaoV2,
-) {
-  return {
-    latestSetTimerNotificationId:
-      (dao.latestSetTimerNotificationId &&
-        fromUuidDao(dao.latestSetTimerNotificationId)) ??
-      undefined,
-    workoutSession: dao.workoutSession && fromSessionDao(dao.workoutSession),
-    historySession: dao.historySession && fromSessionDao(dao.historySession),
-  };
-}
-
-export function fromSharedItemDao(
-  dao: LiftLog.Ui.Models.SharedItemPayload,
-): SharedItem | null {
-  if (dao.sharedProgramBlueprint?.programBlueprint) {
-    return new SharedProgramBlueprint(
-      fromProgramBlueprintDao(dao.sharedProgramBlueprint.programBlueprint),
-    );
-  }
-  return null;
-}
-function fromFollowRequestDao(
-  value: LiftLog.Ui.Models.IInboxMessageDao,
-): FollowRequestPOJO {
-  return FollowRequest.fromPOJO({
-    name: value.followRequest?.name?.value ?? '',
-    userId: fromUuidDao(value.fromUserId),
-  }).toPOJO();
 }

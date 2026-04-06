@@ -1,22 +1,24 @@
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import LimitedHtml from '@/components/presentation/limited-html';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
 import SessionComponent from '@/components/smart/session-component';
 import SessionMoreMenuComponent from '@/components/smart/session-more-menu-component';
 import { useAppSelector, useAppSelectorWithArg } from '@/store';
 import {
-  persistCurrentSession,
+  finishCurrentWorkout,
   selectCurrentSession,
 } from '@/store/current-session';
-import { addUnpublishedSessionId } from '@/store/feed';
-import { setStatsIsDirty } from '@/store/stats';
 import { useTranslate } from '@tolgee/react';
 import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useKeepAwake } from 'expo-keep-awake';
+import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 
 export default function Index() {
   const dispatch = useDispatch();
   const session = useAppSelectorWithArg(selectCurrentSession, 'workoutSession');
+  const keepAwake = useAppSelector(
+    (x) => x.settings.keepScreenAwakeDuringWorkout,
+  );
   const { dismissTo } = useRouter();
   const { t } = useTranslate();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -28,16 +30,20 @@ export default function Index() {
         return;
       }
       setConfirmOpen(false);
-      dispatch(addUnpublishedSessionId(session.id));
     }
-    dispatch(persistCurrentSession('workoutSession'));
-    dispatch(setStatsIsDirty(true));
+    dispatch(finishCurrentWorkout('workoutSession'));
     dismissTo('/');
   };
+  useEffect(() => {
+    if (!session) {
+      dismissTo('/');
+    }
+  }, [session, dismissTo]);
   const showBodyweight = useAppSelector((x) => x.settings.showBodyweight);
 
   return (
     <>
+      {keepAwake && <KeepAwake />}
       <Stack.Screen
         options={{
           title: session?.blueprint.name ?? 'Workout',
@@ -52,13 +58,23 @@ export default function Index() {
         saveAndClose={() => save()}
       />
       <ConfirmationDialog
-        okText={t('Finish')}
+        okText={t('generic.finish.button')}
         onOk={() => save(true)}
         onCancel={() => setConfirmOpen(false)}
-        textContent={<LimitedHtml value={t('FinishIncompleteWorkout')} />}
-        headline={t('Finish workout?')}
+        textContent={
+          <LimitedHtml value={t('workout.finish.incomplete.body')} />
+        }
+        headline={t('workout.finish.confirm.title')}
         open={confirmOpen}
       />
     </>
   );
+}
+
+/**
+ * Allows us to conditionally keep the screen awake, as we cannot use hooks conditionally
+ */
+function KeepAwake() {
+  useKeepAwake();
+  return <></>;
 }

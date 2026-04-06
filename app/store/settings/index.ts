@@ -22,12 +22,16 @@ interface SettingsState {
   tipToShow: number;
   showFeed: boolean;
   restNotifications: boolean;
+  crashReportsEnabled: boolean;
+  welcomeWizardCompleted: boolean;
   remoteBackupSettings: RemoteBackupSettings;
   lastBackup: RemoteData<LastBackup, string>;
   backupReminder: boolean;
   colorSchemeSeed: ColorSchemeSeed;
   preferredLanguage: string | undefined;
   notesExpandedByDefault: boolean;
+  keepScreenAwakeDuringWorkout: boolean;
+  exportToHealthAggregator: boolean;
 }
 
 interface RemoteBackupSettings {
@@ -45,6 +49,8 @@ const initialState: SettingsState = {
   tipToShow: 1,
   showFeed: true,
   restNotifications: true,
+  crashReportsEnabled: true,
+  welcomeWizardCompleted: false,
   proToken: undefined,
   remoteBackupSettings: {
     endpoint: '',
@@ -56,6 +62,8 @@ const initialState: SettingsState = {
   colorSchemeSeed: 'default',
   preferredLanguage: undefined,
   notesExpandedByDefault: false,
+  keepScreenAwakeDuringWorkout: false,
+  exportToHealthAggregator: false,
 };
 
 const settingsSlice = createSlice({
@@ -83,8 +91,17 @@ const settingsSlice = createSlice({
     setRestNotifications(state, action: PayloadAction<boolean>) {
       state.restNotifications = action.payload;
     },
+    setCrashReportsEnabled(state, action: PayloadAction<boolean>) {
+      state.crashReportsEnabled = action.payload;
+    },
+    setWelcomeWizardCompleted(state, action: PayloadAction<boolean>) {
+      state.welcomeWizardCompleted = action.payload;
+    },
     setNotesExpandedByDefault(state, action: PayloadAction<boolean>) {
       state.notesExpandedByDefault = action.payload;
+    },
+    setKeepScreenAwakeDuringWorkout(state, action: PayloadAction<boolean>) {
+      state.keepScreenAwakeDuringWorkout = action.payload;
     },
     setRemoteBackupSettings(
       state,
@@ -112,6 +129,9 @@ const settingsSlice = createSlice({
     },
     setPreferredLanguage(state, action: PayloadAction<string | undefined>) {
       state.preferredLanguage = action.payload;
+    },
+    setExportToHealthAggregator(state, action: PayloadAction<boolean>) {
+      state.exportToHealthAggregator = action.payload;
     },
   },
   selectors: {
@@ -151,6 +171,8 @@ export const {
   setTipToShow,
   setShowFeed,
   setRestNotifications,
+  setCrashReportsEnabled,
+  setWelcomeWizardCompleted,
   setRemoteBackupSettings,
   setLastBackup,
   setBackupReminder,
@@ -159,6 +181,8 @@ export const {
   setProToken,
   setPreferredLanguage,
   setNotesExpandedByDefault,
+  setKeepScreenAwakeDuringWorkout,
+  setExportToHealthAggregator,
 } = settingsSlice.actions;
 
 export const { selectPreferredWeightUnit } = settingsSlice.selectors;

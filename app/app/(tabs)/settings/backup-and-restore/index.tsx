@@ -1,13 +1,12 @@
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import LimitedHtml from '@/components/presentation/limited-html';
-import ListSwitch from '@/components/presentation/list-switch';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
+import ListSwitch from '@/components/presentation/foundation/list-switch';
 import { LiftLog } from '@/gen/proto';
 import { useActionEffect } from '@/hooks/useActionEffect';
 import { useAppTheme } from '@/hooks/useAppTheme';
-import { fromFeedStateDao } from '@/models/storage/conversions.from-dao';
 import { useAppSelector } from '@/store';
-import { patchFeedState } from '@/store/feed';
+import { fromFeedStateDao, patchFeedState } from '@/store/feed';
 import {
   beginFeedImport,
   exportData,
@@ -20,6 +19,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { List } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
+import { HealthExportSwitch } from '@/components/smart/health-export-switch';
 
 export default function BackupAndRestorePage() {
   const { t } = useTranslate();
@@ -30,42 +30,45 @@ export default function BackupAndRestorePage() {
   const [feedExportDialogOpen, setFeedExportDialogOpen] = useState(false);
   return (
     <FullHeightScrollView>
-      <Stack.Screen options={{ title: t('ExportBackupRestore') }} />
+      <Stack.Screen
+        options={{ title: t('backup.export_backup_restore.title') }}
+      />
       <List.Section>
         <List.Item
-          title={t('BackUpData')}
-          description={t('BackUpDataSubtitle')}
+          title={t('backup.backup_data.title')}
+          description={t('backup.backup_data.subtitle')}
           left={(props) => <List.Icon icon={'backup'} {...props} />}
           onPress={() => setFeedExportDialogOpen(true)}
-        ></List.Item>
+        />
         <List.Item
-          title={t('RestoreData')}
-          description={t('RestoreDataSubtitle')}
+          title={t('backup.restore_data.title')}
+          description={t('backup.restore_data.subtitle')}
           left={(props) => <List.Icon icon={'history'} {...props} />}
           onPress={() => {
             dispatch(importData());
             dispatch(setStatsIsDirty(true));
           }}
-        ></List.Item>
+        />
         <List.Item
-          title={t('AutomaticRemoteBackup')}
-          description={t('AutomaticRemoteBackupSubtitle')}
+          title={t('backup.automatic_remote.title')}
+          description={t('backup.automatic_remote.subtitle')}
           left={(props) => <List.Icon icon={'cloudUpload'} {...props} />}
           onPress={() =>
             push('/(tabs)/settings/backup-and-restore/remote-backup')
           }
-        ></List.Item>
+        />
         <List.Item
-          title={t('PlaintextExport')}
-          description={t('PlaintextExportSubtitle')}
+          title={t('backup.plaintext_export.title')}
+          description={t('backup.plaintext_export.subtitle')}
           left={(props) => <List.Icon icon={'description'} {...props} />}
           onPress={() =>
             push('/(tabs)/settings/backup-and-restore/plain-text-export')
           }
-        ></List.Item>
+        />
+        <HealthExportSwitch />
         <ListSwitch
-          headline={<T keyName="BackupReminders" />}
-          supportingText={<T keyName="BackupRemindersSubtitle" />}
+          headline={<T keyName="backup.reminders.title" />}
+          supportingText={<T keyName="backup.reminders.subtitle" />}
           value={backupReminders}
           onValueChange={(value) => dispatch(setBackupReminder(value))}
         />
@@ -108,17 +111,17 @@ function ImportFeedDialog({ open, setOpen }: DialogProps) {
   });
   return (
     <ConfirmationDialog
-      headline={t('ImportFeedDataQuestion')}
+      headline={t('feed.import_data.confirm.title')}
       textContent={
         <LimitedHtml
-          value={t('ImportFeedDataQuestionMessage')}
+          value={t('feed.import_data.confirm.body')}
           emStyles={{ color: colors.error, fontWeight: 'bold' }}
         />
       }
       onOk={importFeedData}
-      okText={t('Import')}
+      okText={t('generic.import.button')}
       onCancel={() => setOpen(false)}
-      cancelText={t("Don't import feed")}
+      cancelText={t('feed.dont_import.button')}
       open={open}
     />
   );
@@ -138,18 +141,18 @@ function ExportFeedDialog({ open, setOpen }: DialogProps) {
   };
   return (
     <ConfirmationDialog
-      headline={t('BackupFeedAccount')}
+      headline={t('feed.backup_account.title')}
       textContent={
         <LimitedHtml
-          value={t('BackupFeedAccountMessage')}
+          value={t('feed.backup_account.confirm.body')}
           emStyles={{ color: colors.error, fontWeight: 'bold' }}
         />
       }
-      okText={t('IncludeFeed')}
+      okText={t('feed.include_feed.label')}
       onOk={exportWithFeed}
-      additionalActionText={t('JustMyData')}
+      additionalActionText={t('backup.just_my_data.button')}
       onAdditionalAction={exportWithoutFeed}
-      cancelText={t('Cancel')}
+      cancelText={t('generic.cancel.button')}
       onCancel={() => setOpen(false)}
       open={open}
     />

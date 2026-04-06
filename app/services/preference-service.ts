@@ -32,9 +32,6 @@ export class PreferenceService {
 
   async getProToken(): Promise<string | undefined> {
     const token = await this.keyValueStore.getItem('proToken');
-    // if (__DEV__) {
-    //   return 'test';
-    // }
     return token;
   }
 
@@ -66,6 +63,32 @@ export class PreferenceService {
     await this.keyValueStore.setItem(
       'restNotifications',
       toBooleanString(restNotifications),
+    );
+  }
+
+  async getCrashReportsEnabled(): Promise<boolean> {
+    const value = await this.keyValueStore.getItem('crashReportsEnabled');
+    return fromBooleanString(value, true);
+  }
+
+  async setCrashReportsEnabled(crashReportsEnabled: boolean): Promise<void> {
+    await this.keyValueStore.setItem(
+      'crashReportsEnabled',
+      toBooleanString(crashReportsEnabled),
+    );
+  }
+
+  async getWelcomeWizardCompleted(): Promise<boolean> {
+    const value = await this.keyValueStore.getItem('welcomeWizardCompleted');
+    return fromBooleanString(value, false);
+  }
+
+  async setWelcomeWizardCompleted(
+    welcomeWizardCompleted: boolean,
+  ): Promise<void> {
+    await this.keyValueStore.setItem(
+      'welcomeWizardCompleted',
+      toBooleanString(welcomeWizardCompleted),
     );
   }
 
@@ -107,47 +130,6 @@ export class PreferenceService {
   async getShowFeed(): Promise<boolean> {
     const value = await this.keyValueStore.getItem('showFeed');
     return fromBooleanString(value, true);
-  }
-
-  async getHasRequestedNotificationPermission(): Promise<boolean> {
-    const value = await this.keyValueStore.getItem(
-      'hasRequestedNotificationPermission',
-    );
-    return fromBooleanString(value, false);
-  }
-
-  async setHasRequestedNotificationPermission(
-    hasRequested: boolean,
-  ): Promise<void> {
-    await this.keyValueStore.setItem(
-      'hasRequestedNotificationPermission',
-      toBooleanString(hasRequested),
-    );
-  }
-
-  async getAppOpenedCount(): Promise<number> {
-    const value = await this.keyValueStore.getItem('appOpenedCount');
-    const parsed = parseInt(value ?? '', 10);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-
-  async setAppOpenedCount(count: number): Promise<void> {
-    await this.keyValueStore.setItem('appOpenedCount', count.toString());
-  }
-
-  async setAppRatingResult(result: AppRatingResult): Promise<void> {
-    await this.keyValueStore.setItem('appRatingResult', result.toString());
-  }
-
-  async getAppRatingResult(): Promise<AppRatingResult> {
-    const value = await this.keyValueStore.getItem('appRatingResult');
-    if (
-      value &&
-      Object.values(AppRatingResult).includes(value as AppRatingResult)
-    ) {
-      return value as AppRatingResult;
-    }
-    return AppRatingResult.NotRated;
   }
 
   async getRemoteBackupSettings(): Promise<RemoteBackupSettings> {
@@ -230,6 +212,32 @@ export class PreferenceService {
     );
   }
 
+  async getKeepScreenAwakeDuringWorkout(): Promise<boolean> {
+    const value = await this.keyValueStore.getItem(
+      'keepScreenAwakeDuringWorkout',
+    );
+    return fromBooleanString(value, true);
+  }
+
+  async setKeepScreenAwakeDuringWorkout(value: boolean): Promise<void> {
+    await this.keyValueStore.setItem(
+      'keepScreenAwakeDuringWorkout',
+      toBooleanString(value),
+    );
+  }
+
+  async getExportToHealthAggregator(): Promise<boolean> {
+    const value = await this.keyValueStore.getItem('exportToHealthAggregator');
+    return fromBooleanString(value, false);
+  }
+
+  async setExportToHealthAggregator(value: boolean): Promise<void> {
+    await this.keyValueStore.setItem(
+      'exportToHealthAggregator',
+      toBooleanString(value),
+    );
+  }
+
   async setColorSchemeSeed(payload: ColorSchemeSeed): Promise<void> {
     await this.keyValueStore.setItem('colorSchemeSeed', payload);
   }
@@ -260,8 +268,9 @@ export class PreferenceService {
   }
 
   getPreferredLanguage() {
-    return this.keyValueStore.getItem('preferredLanguage');
+    return this.keyValueStore.getItemSync('preferredLanguage');
   }
+
   setPreferredLanguage(lang: string | undefined) {
     return lang
       ? this.keyValueStore.setItem('preferredLanguage', lang)

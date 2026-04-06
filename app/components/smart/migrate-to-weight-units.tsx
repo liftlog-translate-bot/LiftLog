@@ -1,7 +1,7 @@
-import FullScreenDialog from '@/components/presentation/full-screen-dialog';
-import Button from '@/components/presentation/gesture-wrappers/button';
-import { AppIconSource } from '@/components/presentation/ms-icon-source';
-import SelectButton from '@/components/presentation/select-button';
+import FullScreenDialog from '@/components/presentation/foundation/full-screen-dialog';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
+import { AppIconSource } from '@/components/presentation/foundation/ms-icon-source';
+import SelectButton from '@/components/presentation/foundation/select-button';
 import { spacing } from '@/hooks/useAppTheme';
 import { useAppSelector } from '@/store';
 import {
@@ -9,7 +9,7 @@ import {
   setExercisesRequiringWeightMigration,
   updateExerciseRequiringWeightMigration,
 } from '@/store/stored-sessions';
-import { FlashList } from '@shopify/flash-list';
+import { LegendList } from '@legendapp/list';
 import { useTranslate } from '@tolgee/react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -33,13 +33,13 @@ export function MigrateToWeightUnitsWizard() {
       onClose={() => {
         setOpen(false);
       }}
-      title={t('Migrate weights')}
-      action={t('Save')}
+      title={t('weight.migrate.button')}
+      action={t('generic.save.button')}
       onAction={() => {
         dispatch(migrateExerciseWeights());
       }}
     >
-      <FlashList
+      <LegendList
         style={{ flex: 1, marginHorizontal: -spacing.pageHorizontalMargin }}
         ListHeaderComponent={
           <View
@@ -52,8 +52,8 @@ export function MigrateToWeightUnitsWizard() {
           >
             <Icon source={'weight' satisfies AppIconSource} size={48} />
             <Text variant="bodyMedium" style={{ textAlign: 'center' }}>
-              {t('MigrateWeightMessage')}
-              {t('MigrateWeightPrompt')}
+              {t('weight.migrate.explanation')}
+              {t('weight.migrate.prompt')}
             </Text>
             <View
               style={{
@@ -76,7 +76,7 @@ export function MigrateToWeightUnitsWizard() {
                   )
                 }
               >
-                {t('All kilograms')}
+                {t('weight.all_kilograms.button')}
               </Button>
               <Button
                 mode="contained"
@@ -91,7 +91,7 @@ export function MigrateToWeightUnitsWizard() {
                   )
                 }
               >
-                {t('All pounds')}
+                {t('weight.all_pounds.button')}
               </Button>
             </View>
           </View>

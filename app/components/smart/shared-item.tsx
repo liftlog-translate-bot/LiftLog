@@ -1,22 +1,33 @@
-import CardList from '@/components/presentation/card-list';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import SessionSummary from '@/components/presentation/session-summary';
-import SessionSummaryTitle from '@/components/presentation/session-summary-title';
-import SplitCardControl from '@/components/presentation/split-card-control';
-import { SurfaceText } from '@/components/presentation/surface-text';
+import CardList from '@/components/presentation/foundation/card-list';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import SessionSummary from '@/components/presentation/summary/session-summary';
+import SessionSummaryTitle from '@/components/presentation/summary/session-summary-title';
+import SplitCardControl from '@/components/presentation/foundation/split-card-control';
+import { SurfaceText } from '@/components/presentation/foundation/surface-text';
 import { spacing } from '@/hooks/useAppTheme';
-import { SharedItem, SharedProgramBlueprint } from '@/models/feed-models';
-import { savePlan } from '@/store/program';
+import {
+  SharedItem,
+  SharedProgramBlueprint,
+  SharedSession,
+} from '@/models/feed-models';
+import { addProgramSession, savePlan } from '@/store/program';
 import { showSnackbar } from '@/store/app';
 import { T } from '@tolgee/react';
-import { View } from 'react-native';
+import { Animated, View } from 'react-native';
 import { Card, Text } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
 import { uuid } from '@/utils/uuid';
 import { useRouter } from 'expo-router';
 import { Session } from '@/models/session-models';
 import { usePreferredWeightUnit } from '@/hooks/usePreferredWeightUnit';
+import { useMountEffect } from '@/hooks/useMountEffect';
+import { setCurrentSession } from '@/store/current-session';
+import SessionComponent from '@/components/smart/session-component';
+import { useAppSelector } from '@/store';
+import { useScrollHeaderColor } from '@/hooks/useScrollListener';
+import { useState } from 'react';
+import { CurrentWorkoutReplacer } from '@/components/smart/current-workout-replacer';
 
 interface SharedItemProps {
   sharedItem: SharedItem;
@@ -84,14 +95,14 @@ function SharedProgramBlueprintContent({
             style={{ alignSelf: 'center' }}
             onPress={handleSave}
           >
-            <T keyName="Save" />
+            <T keyName="generic.save.button" />
           </Button>
         </View>
       </View>
 
       <View style={{ flex: 1, gap: spacing[2] }}>
         <Text variant="titleMedium">
-          <T keyName="AllSessions" />
+          <T keyName="workout.all.title" />
         </Text>
         <CardList
           cardType="contained"
@@ -107,7 +118,7 @@ function SharedProgramBlueprintContent({
           keySelector={(session) => session.id}
           emptyTemplate={
             <SurfaceText>
-              <T keyName="NoWorkoutsInPlan" />
+              <T keyName="workout.no_workouts_in_plan.message" />
             </SurfaceText>
           }
         />
@@ -116,11 +127,74 @@ function SharedProgramBlueprintContent({
   );
 }
 
+function SharedSessionContent({ sharedItem }: { sharedItem: SharedSession }) {
+  const session = sharedItem.session;
+  const dispatch = useDispatch();
+  const showBodyweight = useAppSelector((x) => x.settings.showBodyweight);
+  const headerColor = useScrollHeaderColor();
+  const activeProgramId = useAppSelector((x) => x.program.activeProgramId);
+  const { push } = useRouter();
+  const [sessionToReplace, setSessionToReplace] = useState<Session | undefined>(
+    undefined,
+  );
+
+  useMountEffect(() => {
+    dispatch(setCurrentSession({ target: 'sharedSession', session }));
+  });
+  return (
+    <View style={{ flex: 1 }}>
+      <Animated.View
+        style={{
+          flexDirection: 'row',
+          gap: spacing[2],
+          padding: spacing.pageHorizontalMargin,
+          backgroundColor: headerColor,
+        }}
+      >
+        <Button
+          icon={'assignment'}
+          onPress={() => {
+            dispatch(
+              addProgramSession({
+                programId: activeProgramId,
+                sessionBlueprint: session.blueprint,
+              }),
+            );
+            push(`/settings/manage-workouts/${activeProgramId}`);
+          }}
+          mode="outlined"
+          style={{ flex: 1 }}
+        >
+          <T keyName="feed.shared_session.save_to_plan.button" />
+        </Button>
+        <Button
+          icon={'playCircle'}
+          onPress={() => setSessionToReplace(session.with({ id: uuid() }))}
+          mode="contained"
+          style={{ flex: 1 }}
+        >
+          <T keyName="feed.shared_session.start_workout.button" />
+        </Button>
+      </Animated.View>
+      <CurrentWorkoutReplacer
+        session={sessionToReplace}
+        clearSession={() => setSessionToReplace(undefined)}
+      />
+      <SessionComponent
+        target="sharedSession"
+        showBodyweight={showBodyweight}
+      />
+    </View>
+  );
+}
+
 export default function SharedItemComponent({ sharedItem }: SharedItemProps) {
   if (sharedItem instanceof SharedProgramBlueprint) {
     return <SharedProgramBlueprintContent sharedItem={sharedItem} />;
   }
-
+  if (sharedItem instanceof SharedSession) {
+    return <SharedSessionContent sharedItem={sharedItem} />;
+  }
   // Fallback for future shared item types
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

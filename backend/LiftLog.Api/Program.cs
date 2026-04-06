@@ -61,9 +61,7 @@ builder.Services.AddScoped<RateLimitService>();
 builder.Services.AddHostedService<CleanupExpiredDataHostedService>();
 
 builder.Services.AddScoped<PurchaseVerificationService>();
-builder.Services.AddGooglePurchaseVerification();
-builder.Services.AddApplePurchaseVerification();
-builder.Services.AddGptAiWorkoutPlanner();
+builder.Services.AddAnthropicWorkoutPlanner();
 builder.Services.AddWebAuthPurchaseVerification();
 builder.Services.AddRevenueCatPurchaseVerification();
 
@@ -103,8 +101,9 @@ app.MapMethods(
     }
 );
 
-using (var scope = app.Services.CreateScope())
+if (!app.Configuration.GetValue<bool>("SkipDatabaseMigrations"))
 {
+    using var scope = app.Services.CreateScope();
     var userDb = scope.ServiceProvider.GetRequiredService<UserDataContext>();
     await userDb.Database.MigrateAsync();
     var rateLimitDb = scope.ServiceProvider.GetRequiredService<RateLimitContext>();
@@ -112,5 +111,3 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
-
-public partial class Program { }

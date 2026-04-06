@@ -18,12 +18,14 @@ import {
 } from './index';
 import { LiftLog } from '@/gen/proto';
 import { match } from 'ts-pattern';
-import { fromSessionDao } from '@/models/storage/conversions.from-dao';
-import { toSessionHistoryDao } from '@/models/storage/conversions.to-dao';
 import { fetchUpcomingSessions } from '@/store/program';
 import { KeyValueStore } from '@/services/key-value-store';
 import Enumerable from 'linq';
-import { RecordedWeightedExercise, Session } from '@/models/session-models';
+import {
+  RecordedWeightedExercise,
+  Session,
+  toSessionHistoryDao,
+} from '@/models/session-models';
 import { Weight } from '@/models/weight';
 import { setCurrentSession } from '@/store/current-session';
 
@@ -73,7 +75,7 @@ export function applyStoredSessionsEffects() {
 
       const completedSessionsList =
         storedData?.completedSessions.map((x) => {
-          const s = fromSessionDao(x);
+          const s = Session.fromDao(x);
           return s.with({
             bodyweight: coalesceWeightUnit(s.bodyweight),
           });
@@ -213,6 +215,45 @@ export function applyStoredSessionsEffects() {
     dispatch(fetchUpcomingSessions());
     dispatch(setExercisesRequiringWeightMigration([]));
   });
+
+  addEffect(
+    addStoredSession,
+    async (a, { getState, extra: { healthExportService, logger } }) => {
+      const workout = a.payload;
+      if (
+        !getState().settings.exportToHealthAggregator ||
+        !healthExportService.canExport()
+      ) {
+        return;
+      }
+      try {
+        await healthExportService.exportWorkout(workout);
+      } catch (e) {
+        logger.error('Failed to sync to health aggregator', e);
+      }
+    },
+  );
+
+  addEffect(
+    deleteStoredSession,
+    async (
+      action,
+      { stateAfterReduce, extra: { healthExportService, logger } },
+    ) => {
+      const workoutId = action.payload;
+      if (
+        !stateAfterReduce.settings.exportToHealthAggregator ||
+        !healthExportService.canExport()
+      ) {
+        return;
+      }
+      try {
+        await healthExportService.deleteWorkout(workoutId);
+      } catch (e) {
+        logger.error('Failed to delete workout from HealthConnect', e);
+      }
+    },
+  );
 
   addEffect(
     [deleteStoredSession, addStoredSession, upsertStoredSessions],

@@ -1,14 +1,16 @@
 import Feed from '@/components/smart/feed';
 import { FeedFollowers } from '@/components/smart/feed-followers';
 import { FeedFollowing } from '@/components/smart/feed-following';
-import { useAppTheme } from '@/hooks/useAppTheme';
-import { ScrollProvider, useScroll } from '@/hooks/useScollListener';
+import {
+  ScrollProvider,
+  useScroll,
+  useScrollHeaderColor,
+} from '@/hooks/useScrollListener';
 import { useAppSelector } from '@/store';
 import { selectFollowRequestCount } from '@/store/feed';
 import { useTranslate } from '@tolgee/react';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Animated, ColorValue, useAnimatedValue } from 'react-native';
 import { Tabs, TabScreen, TabsProvider } from 'react-native-paper-tabs';
 
 export default function FeedIndexPage() {
@@ -16,24 +18,8 @@ export default function FeedIndexPage() {
   const followRequestBadgeCount =
     useAppSelector(selectFollowRequestCount) || undefined;
 
-  const { isScrolled, setScrolled } = useScroll();
-
-  const { colors } = useAppTheme();
-  const scrollColor = useAnimatedValue(0);
-
-  useEffect(() => {
-    Animated.timing(scrollColor, {
-      toValue: isScrolled ? 1 : 0,
-      duration: 200,
-      useNativeDriver: false, // color interpolation can't use native driver
-    }).start();
-  }, [isScrolled, scrollColor]);
-
-  // Interpolate background color
-  const backgroundColor = scrollColor.interpolate({
-    inputRange: [0, 1],
-    outputRange: [colors.surface, colors.surfaceContainer],
-  }) as unknown as ColorValue;
+  const { setScrolled } = useScroll();
+  const headerColor = useScrollHeaderColor();
 
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [tabScrolls, setTabScrolls] = useState<Record<number, boolean>>({});
@@ -49,13 +35,13 @@ export default function FeedIndexPage() {
 
   return (
     <>
-      <Stack.Screen options={{ title: t('Feed') }} />
+      <Stack.Screen options={{ title: t('feed.feed.title') }} />
       <TabsProvider onChangeIndex={setActiveTabIndex}>
         <Tabs
-          tabHeaderStyle={{ backgroundColor }}
+          tabHeaderStyle={{ backgroundColor: headerColor }}
           style={{ backgroundColor: 'transparent' }}
         >
-          <TabScreen label={t('Feed')}>
+          <TabScreen label={t('feed.feed.title')}>
             <ScrollProvider
               isScrolled={!!tabScrolls[activeTabIndex]}
               setScrolled={(s) => setTabScrolled(s, 0)}
@@ -63,7 +49,7 @@ export default function FeedIndexPage() {
               <Feed />
             </ScrollProvider>
           </TabScreen>
-          <TabScreen label={t('Feed_Following')}>
+          <TabScreen label={t('feed.following.title')}>
             <ScrollProvider
               isScrolled={!!tabScrolls[activeTabIndex]}
               setScrolled={(s) => setTabScrolled(s, 1)}
@@ -72,7 +58,7 @@ export default function FeedIndexPage() {
             </ScrollProvider>
           </TabScreen>
           <TabScreen
-            label={t('Feed_Followers')}
+            label={t('feed.followers.title')}
             badge={followRequestBadgeCount!}
           >
             <ScrollProvider

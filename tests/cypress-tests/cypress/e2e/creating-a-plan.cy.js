@@ -7,6 +7,7 @@ const benchFromNewPlan = 'bn'
 describe('Creating a plan', () => {
   beforeEach(() => {
     cy.visit('/')
+    cy.completeWelcomeWizard()
   })
 
   describe('When a user edits their current plan', () => {
@@ -58,8 +59,10 @@ function populatePlanFromEditPage(exerciseName) {
   cy.contains('Add workout',).click()
   cy.contains('Add exercise',).click()
   cy.dialog().findByTestId('exercise-name').clear().type(exerciseName)
-  cy.dialog().findByTestId('exercise-reps').should('contain.text', '10').findByTestId('fixed-decrement').click()
-  cy.dialog().findByTestId('exercise-sets').should('contain.text', '3').findByTestId('fixed-increment').click()
+  cy.dialog().findByTestId('exercise-reps').findByTestId('fixed-value-input').should('contain.value', '10')
+  cy.dialog().findByTestId('exercise-reps').findByTestId('fixed-decrement').click()
+  cy.dialog().findByTestId('exercise-sets').findByTestId('fixed-value-input').should('contain.value', '3')
+  cy.dialog().findByTestId('exercise-sets').findByTestId('fixed-increment').click()
   cy.dialog().findByTestId('exercise-auto-increase').clear().type('4.5')
   cy.dialog().findByTestId('exercise-superset').click()
   cy.dialog().contains('Long').click()
@@ -75,13 +78,11 @@ function assertPlanFromEditPage(exerciseName, workoutName) {
   cy.contains(workoutName).click()
   cy.getByTestId('exercise-blueprint-summary').first().click()
   cy.dialog().findByTestId('exercise-name').should('have.value', exerciseName)
-  cy.dialog().findByTestId('exercise-sets').should('contain.text', '4')
-  cy.dialog().findByTestId('exercise-reps').should('contain.text', '9')
+  cy.dialog().findByTestId('exercise-reps').findByTestId('fixed-value-input').should('contain.value', '9')
+  cy.dialog().findByTestId('exercise-sets').findByTestId('fixed-value-input').should('contain.value', '4')
 
-  //  TODO - this works manually, but fails in cypress.
   cy.dialog().findByTestId('exercise-auto-increase').should('have.value', '4.5')
   cy.dialog().findByTestId('exercise-superset').children().find('[checked]')
-  // Can't really test this in rn -manual verified it works
   cy.dialog().contains('Long')
 
 }

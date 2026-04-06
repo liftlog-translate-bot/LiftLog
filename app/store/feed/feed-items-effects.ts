@@ -27,12 +27,8 @@ import {
   UserEventResponse,
 } from '@/models/feed-api-models';
 import { AesEncryptedAndRsaSignedData } from '@/models/encryption-models';
-import { toSessionDao, toUuidDao } from '@/models/storage/conversions.to-dao';
-import {
-  fromSessionDao,
-  fromSessionBlueprintDao,
-  fromUuidDao,
-} from '@/models/storage/conversions.from-dao';
+import { toUuidDao } from '@/models/storage/conversions.to-dao';
+import { fromUuidDao } from '@/models/storage/conversions.from-dao';
 import { EncryptionService } from '@/services/encryption-service';
 import { FeedApiService } from '@/services/feed-api';
 import { selectSession } from '@/store/stored-sessions';
@@ -197,14 +193,14 @@ export function addFeedItemEffects() {
               a instanceof SessionFeedItem
                 ? a.session.date
                     .atStartOfDay()
-                    .atZone(ZoneId.SYSTEM)
+                    .atZone(ZoneId.systemDefault())
                     .toInstant()
                 : a.timestamp;
             const bTime =
               b instanceof SessionFeedItem
                 ? b.session.date
                     .atStartOfDay()
-                    .atZone(ZoneId.SYSTEM)
+                    .atZone(ZoneId.systemDefault())
                     .toInstant()
                 : b.timestamp;
 
@@ -278,11 +274,10 @@ async function publishSessionAsync(
 ) {
   const sessionPayload = LiftLog.Ui.Models.UserEventPayload.create({
     sessionPayload: {
-      session: toSessionDao(
-        identity.publishBodyweight
-          ? session
-          : session.with({ bodyweight: undefined }),
-      ),
+      session: (identity.publishBodyweight
+        ? session
+        : session.with({ bodyweight: undefined })
+      ).toDao(),
     },
   });
 
@@ -383,7 +378,7 @@ async function getDecryptedUserAsync(
 
       const currentPlanDao =
         LiftLog.Ui.Models.CurrentPlanDaoV1.decode(decryptedPlanBytes);
-      currentPlan = currentPlanDao.sessions.map(fromSessionBlueprintDao);
+      currentPlan = currentPlanDao.sessions.map(SessionBlueprint.fromDao);
     }
 
     // Decrypt profile picture if present
@@ -452,7 +447,7 @@ async function toFeedItemAsync(
           userEvent.eventId,
           timestamp,
           expiry,
-          fromSessionDao(payload.sessionPayload!.session),
+          Session.fromDao(payload.sessionPayload!.session),
         );
 
       case 'removedSessionPayload':

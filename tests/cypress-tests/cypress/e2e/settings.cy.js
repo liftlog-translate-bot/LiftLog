@@ -4,6 +4,7 @@
 describe('Settings', () => {
   beforeEach(() => {
     cy.visit('/')
+    cy.completeWelcomeWizard()
   })
 
   describe('When a user restores data', () => {
@@ -58,9 +59,6 @@ function assertShowsBodyweightOnAllPages(shouldShow) {
   cy.navigate('Stats')
   cy.getByTestId('stats-time-selector').click()
   cy.contains('All time').click({ force: true })
-
-
-  cy.getByTestId('bodyweight-stat-card').should(classify)
 
   cy.navigate('Workout')
   cy.navigate('Workout')

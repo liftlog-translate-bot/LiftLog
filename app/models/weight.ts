@@ -1,6 +1,9 @@
+import { LiftLog } from '@/gen/proto';
 import { localeFormatBigNumber } from '@/utils/locale-bignumber';
 import BigNumber from 'bignumber.js';
 import { match, P } from 'ts-pattern';
+import { toDecimalDao } from './storage/conversions.to-dao';
+import { fromDecimalDao } from './storage/conversions.from-dao';
 
 // nil is special in that it basically tries to coalesce into whatever else is given
 export type WeightUnit = 'kilograms' | 'pounds' | 'nil';
@@ -17,6 +20,20 @@ export class Weight {
     this.value = value instanceof BigNumber ? value : new BigNumber(value);
   }
 
+  toDao(): LiftLog.Ui.Models.Weight {
+    return LiftLog.Ui.Models.Weight.create({
+      unit: toWeightUnitDao(this.unit),
+      value: toDecimalDao(this.value),
+    });
+  }
+
+  static fromDao(value: LiftLog.Ui.Models.IWeight): Weight {
+    return new Weight(
+      fromDecimalDao(value.value!),
+      fromWeightUnitDao(value.unit),
+    );
+  }
+
   with(other: Partial<Weight>): Weight {
     return new Weight(other.value ?? this.value, other.unit ?? this.unit);
   }
@@ -29,6 +46,10 @@ export class Weight {
       return val.convertTo(this.unit).plus(this.value);
     }
     return new Weight(this.value.plus(val), this.unit);
+  }
+
+  abs(): Weight {
+    return new Weight(this.value.abs(), this.unit);
   }
 
   /**
@@ -117,5 +138,30 @@ export function shortFormatWeightUnit(unit: WeightUnit | undefined): string {
     .with('pounds', () => 'lbs')
     .with('nil', () => '-')
     .with(undefined, () => '')
+    .exhaustive();
+}
+
+export function toWeightUnitDao(
+  weightUnit: WeightUnit,
+): LiftLog.Ui.Models.WeightUnit {
+  return match(weightUnit)
+    .with('kilograms', () => LiftLog.Ui.Models.WeightUnit.KILOGRAMS)
+    .with('pounds', () => LiftLog.Ui.Models.WeightUnit.POUNDS)
+    .with('nil', () => LiftLog.Ui.Models.WeightUnit.NIL)
+    .exhaustive();
+}
+
+export function fromWeightUnitDao(
+  daoUnit: LiftLog.Ui.Models.WeightUnit | null | undefined,
+): WeightUnit {
+  return match(daoUnit)
+    .returnType<WeightUnit>()
+    .with(P.nullish, () => 'nil')
+    .with(LiftLog.Ui.Models.WeightUnit.NIL satisfies 0 as 0, () => 'nil')
+    .with(
+      LiftLog.Ui.Models.WeightUnit.KILOGRAMS satisfies 1 as 1,
+      () => 'kilograms',
+    )
+    .with(LiftLog.Ui.Models.WeightUnit.POUNDS satisfies 2 as 2, () => 'pounds')
     .exhaustive();
 }

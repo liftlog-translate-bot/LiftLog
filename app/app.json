@@ -4,7 +4,6 @@
     "slug": "liftlog",
     "version": "1.0.0",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "web": {
       "bundler": "metro",
       "output": "single"
@@ -25,6 +24,15 @@
           "launchMode": "most-recent"
         }
       ],
+      "expo-health-connect",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": false,
+          "NSHealthUpdateUsageDescription": "LiftLog would like to share your workout and/or body weight with Apple Health.",
+          "background": false
+        }
+      ],
       [
         "@sentry/react-native/expo",
         {
@@ -42,6 +50,15 @@
             "enforceNavigationBarContrast": false
           }
         }
+      ],
+      "@sentry/react-native",
+      "expo-sharing",
+      "./plugins/override-health-connect-min-version.js",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification.png"
+        }
       ]
     ],
     "experiments": {
@@ -51,7 +68,13 @@
     "scheme": "liftlog",
     "android": {
       "package": "com.limajuice.liftlog",
-      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM"],
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "com.android.vending.BILLING",
+        "android.permission.health.WRITE_WEIGHT",
+        "android.permission.health.WRITE_EXERCISE",
+        "android.permission.health.WRITE_EXERCISE_ROUTE"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
@@ -79,27 +102,27 @@
         "UIViewControllerBasedStatusBarAppearance": true,
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleLocalizations": [
-          "it",
-          "de",
-          "sr",
-          "fr",
-          "nl",
-          "fi",
-          "es",
-          "ru",
+          "ar",
           "cs",
+          "de",
+          "es",
+          "fi",
+          "fr",
+          "it",
+          "nl",
+          "pt",
+          "ru",
+          "sr",
+          "sv",
           "uk",
-          "pt"
+          "hu",
+          "pl"
         ]
       },
       "appleTeamId": "",
       "version": "$(APP_DISPLAY_VERSION)",
       "buildNumber": "$(APP_VERSION)"
     },
-    "notification": {
-      "icon": "./assets/notification.png"
-    },
-
     "jsEngine": "hermes"
   }
 }

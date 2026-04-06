@@ -13,8 +13,6 @@ import {
   updateFeedIdentity,
 } from '@/store/feed';
 import { LiftLog } from '@/gen/proto';
-import { fromFeedStateDao } from '@/models/storage/conversions.from-dao';
-import { toFeedStateDao } from '@/models/storage/conversions.to-dao';
 import { RemoteData } from '@/models/remote';
 import { addSharedItemEffects } from '@/store/feed/shared-item-effects';
 import { showSnackbar } from '@/store/app';
@@ -23,8 +21,8 @@ import { addInboxEffects } from '@/store/feed/inbox-effects';
 import { addFollowingEffects } from '@/store/feed/following-effects';
 import { selectActiveProgram } from '@/store/program';
 import { ApiErrorType, ApiResult } from '@/services/api-error';
-import { FeedIdentity } from '@/models/feed-models';
 import { Platform } from 'react-native';
+import { fromFeedStateDao, toFeedStateDao } from './conversions';
 
 const StorageKey = 'FeedState';
 export function applyFeedEffects() {
@@ -265,11 +263,7 @@ export function applyFeedEffects() {
         return;
       }
       dispatch(
-        setIdentity(
-          oldFeedIdentity.map((x) =>
-            FeedIdentity.fromPOJO({ ...x, ...action.payload.updates }),
-          ),
-        ),
+        setIdentity(oldFeedIdentity.map((x) => x.with(action.payload.updates))),
       );
       const feedIdentityRemote = selectFeedIdentityRemote(getState());
       if (!feedIdentityRemote.isSuccess()) {
@@ -289,7 +283,9 @@ export function applyFeedEffects() {
         identity.publishBodyweight,
         identity.publishPlan,
         identity.publishWorkouts,
-        selectActiveProgram(stateAfterReduce).sessions,
+        stateAfterReduce.program.isHydrated
+          ? selectActiveProgram(stateAfterReduce).sessions
+          : [],
       );
       if (signal.aborted) {
         return;

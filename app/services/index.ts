@@ -15,8 +15,11 @@ import { ProgressRepository } from '@/services/progress-repository';
 import { SessionService } from '@/services/session-service';
 import { StringSharer } from '@/services/string-sharer';
 import { getTolgee } from '@/services/tolgee';
+import { WorkoutWorker } from '@/services/workout-worker';
 import { RootState } from '@/store';
 import { Store } from '@reduxjs/toolkit';
+import { HealthExportService } from './health-export-service';
+import { HealthExportService as HES } from './health-export-service-shared';
 
 export type Services = Awaited<ReturnType<typeof resolveServicesInternal>>;
 
@@ -56,6 +59,13 @@ function resolveServicesInternal(store: Store<RootState>) {
     new HubConnectionFactory(),
     store.getState,
   );
+  const tolgee = getTolgee(preferenceService);
+  const workoutWorkerService = new WorkoutWorker(
+    store.dispatch,
+    store.getState,
+    tolgee,
+  );
+  const healthExportService: HES = new HealthExportService();
 
   return {
     logger,
@@ -68,12 +78,14 @@ function resolveServicesInternal(store: Store<RootState>) {
     feedInboxDecryptionService,
     feedApiService,
     feedIdentityService,
+    healthExportService,
     stringSharer,
     fileExportService,
     filePickerService,
     preferenceService,
     aiChatService,
-    tolgee: getTolgee(preferenceService),
+    workoutWorkerService,
+    tolgee,
   };
 }
 

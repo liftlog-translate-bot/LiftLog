@@ -3,9 +3,12 @@ import {
   SessionBlueprint,
   ExerciseBlueprint,
   Distance,
+  CardioExerciseBlueprint,
 } from '@/models/blueprint-models';
 import { Weight } from '@/models/weight';
 import {
+  RecordedCardioExercisePOJO,
+  RecordedCardioExerciseSet,
   RecordedWeightedExercise,
   RecordedWeightedExercisePOJO,
   Session,
@@ -14,7 +17,7 @@ import {
 } from '@/models/session-models';
 import { getCycledRepCount } from '@/store/current-session/helpers';
 import { SafeDraft, toSafeDraft } from '@/utils/store-helpers';
-import { Duration, LocalDate, LocalDateTime } from '@js-joda/core';
+import { Duration, LocalDate, OffsetDateTime } from '@js-joda/core';
 import {
   createAction,
   createSelector,
@@ -25,17 +28,24 @@ import BigNumber from 'bignumber.js';
 import { Draft, WritableDraft } from 'immer';
 import Enumerable from 'linq';
 import * as Sentry from '@sentry/react-native';
+import { PlanDiff } from '@/models/blueprint-diff';
+import { WorkoutMessage } from '@/models/workout-worker-messages';
 
 interface CurrentSessionState {
   isHydrated: boolean;
   workoutSession: SessionPOJO | undefined;
   historySession: SessionPOJO | undefined;
   feedSession: SessionPOJO | undefined;
-  latestSetTimerNotificationId: string | undefined;
-  workoutSessionLastSetTime: LocalDateTime | undefined;
+  sharedSession: SessionPOJO | undefined;
+  workoutSessionLastSetTime: OffsetDateTime | undefined;
+  currentPlanDiff: PlanDiff | undefined;
 }
 
-export type SessionTarget = 'workoutSession' | 'historySession' | 'feedSession';
+export type SessionTarget =
+  | 'workoutSession'
+  | 'historySession'
+  | 'feedSession'
+  | 'sharedSession';
 
 export type WeightAppliesTo = 'thisSet' | 'uncompletedSets' | 'allSets';
 
@@ -44,8 +54,9 @@ const initialState: CurrentSessionState = {
   workoutSession: undefined,
   historySession: undefined,
   feedSession: undefined,
-  latestSetTimerNotificationId: undefined,
+  sharedSession: undefined,
   workoutSessionLastSetTime: undefined,
+  currentPlanDiff: undefined,
 };
 
 type TargetedSessionAction<TPayload> = PayloadAction<{
@@ -89,6 +100,10 @@ const currentSessionSlice = createSlice({
       state.isHydrated = action.payload;
     },
 
+    setCurrentPlanDiff(state, action: PayloadAction<PlanDiff | undefined>) {
+      state.currentPlanDiff = action.payload;
+    },
+
     setActiveSessionDate: targetedSessionAction((session, date: LocalDate) => {
       session.date = date;
       const originalDate = session.date;
@@ -97,11 +112,11 @@ const currentSessionSlice = createSlice({
       // Gather all unique, non-null completion dates from all sets
       const allCompletionDates = session.recordedExercises
         .flatMap((re) =>
-          re.type === 'WeightedRecordedExercise'
+          re.type === 'RecordedWeightedExercise'
             ? re.potentialSets.map((ps) =>
                 ps.set?.completionDateTime?.toLocalDate(),
               )
-            : [re.completionDateTime?.toLocalDate()],
+            : re.sets.map((s) => s.completionDateTime?.toLocalDate()),
         )
         .filter((d): d is LocalDate => d !== undefined);
 
@@ -121,21 +136,26 @@ const currentSessionSlice = createSlice({
 
       // Update all sets' completionDateTime
       session.recordedExercises.forEach((re) => {
-        if (re.type === 'WeightedRecordedExercise') {
+        if (re.type === 'RecordedWeightedExercise') {
           re.potentialSets.forEach((ps) => {
             if (ps.set && ps.set.completionDateTime) {
               const setDate = ps.set.completionDateTime.toLocalDate();
               ps.set.completionDateTime = ps.set.completionDateTime
                 .toLocalTime()
-                .atDate(getAdjustedDate(setDate));
+                .atDate(getAdjustedDate(setDate))
+                .atOffset(ps.set.completionDateTime.offset());
             }
           });
         } else {
-          if (re.completionDateTime) {
-            re.completionDateTime = re.completionDateTime
-              .toLocalTime()
-              .atDate(getAdjustedDate(re.completionDateTime.toLocalDate()));
-          }
+          re.sets.forEach((set) => {
+            if (set && set.completionDateTime) {
+              const setDate = set.completionDateTime.toLocalDate();
+              set.completionDateTime = set.completionDateTime
+                .toLocalTime()
+                .atDate(getAdjustedDate(setDate))
+                .atOffset(set.completionDateTime.offset());
+            }
+          });
         }
       });
     }),
@@ -146,7 +166,7 @@ const currentSessionSlice = createSlice({
         action: {
           exerciseIndex: number;
           setIndex: number;
-          time: LocalDateTime;
+          time: OffsetDateTime;
         },
         target,
         state,
@@ -211,7 +231,7 @@ const currentSessionSlice = createSlice({
         } else {
           const weightedExistingExercise =
             session.recordedExercises[action.exerciseIndex].type ===
-            'WeightedRecordedExercise'
+            'RecordedWeightedExercise'
               ? (session.recordedExercises[
                   action.exerciseIndex
                 ] as RecordedWeightedExercisePOJO)
@@ -231,6 +251,28 @@ const currentSessionSlice = createSlice({
                   },
               )
               .toArray();
+          }
+
+          const cardioExistingExercise =
+            session.recordedExercises[action.exerciseIndex].type ===
+            'RecordedCardioExercise'
+              ? (session.recordedExercises[
+                  action.exerciseIndex
+                ] as RecordedCardioExercisePOJO)
+              : undefined;
+
+          if (cardioExistingExercise) {
+            cardioExistingExercise.sets = (
+              action.newBlueprint as CardioExerciseBlueprint
+            ).sets.map((set, i) =>
+              RecordedCardioExerciseSet.empty(set)
+                .with({
+                  // Basically allows us to use values from set, even if there are more sets now and it would be undefined
+                  ...cardioExistingExercise.sets[i],
+                  blueprint: set,
+                })
+                .toPOJO(),
+            );
           }
 
           session.recordedExercises[action.exerciseIndex].blueprint =
@@ -260,13 +302,13 @@ const currentSessionSlice = createSlice({
           exerciseIndex: number;
           setIndex: number;
           reps: number | undefined;
-          time: LocalDateTime;
+          time: OffsetDateTime;
         },
         target,
         state,
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'WeightedRecordedExercise') {
+        if (exercise.type !== 'RecordedWeightedExercise') {
           return;
         }
         if (!exercise.potentialSets[action.setIndex]) {
@@ -310,7 +352,7 @@ const currentSessionSlice = createSlice({
         },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'WeightedRecordedExercise') {
+        if (exercise.type !== 'RecordedWeightedExercise') {
           return;
         }
         switch (action.applyTo) {
@@ -332,10 +374,6 @@ const currentSessionSlice = createSlice({
         }
       },
     ),
-
-    setLatestSetTimerNotificationId(state, action: PayloadAction<string>) {
-      state.latestSetTimerNotificationId = action.payload;
-    },
 
     setCurrentSession: (
       state,
@@ -369,7 +407,7 @@ const currentSessionSlice = createSlice({
 
     setWorkoutSessionLastSetTime(
       state,
-      action: PayloadAction<LocalDateTime | undefined>,
+      action: PayloadAction<OffsetDateTime | undefined>,
     ) {
       state.workoutSessionLastSetTime = action.payload;
     },
@@ -377,64 +415,133 @@ const currentSessionSlice = createSlice({
     updateDurationForCardioExercise: targetedSessionAction(
       (
         session,
-        action: { duration: Duration | undefined; exerciseIndex: number },
+        action: {
+          duration: Duration | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'CardioRecordedExercise') {
+        if (exercise.type !== 'RecordedCardioExercise') {
           return;
         }
-        exercise.duration = action.duration;
+        exercise.sets[action.setIndex].duration = action.duration;
       },
     ),
     updateResistanceForCardioExercise: targetedSessionAction(
       (
         session,
-        action: { resistance: BigNumber | undefined; exerciseIndex: number },
+        action: {
+          resistance: BigNumber | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'CardioRecordedExercise') {
+        if (exercise.type !== 'RecordedCardioExercise') {
           return;
         }
-        exercise.resistance = action.resistance;
+        exercise.sets[action.setIndex].resistance = action.resistance;
+      },
+    ),
+    updateWeightForCardioExercise: targetedSessionAction(
+      (
+        session,
+        action: {
+          weight: Weight | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
+      ) => {
+        const exercise = session.recordedExercises[action.exerciseIndex];
+        if (exercise.type !== 'RecordedCardioExercise') {
+          return;
+        }
+        exercise.sets[action.setIndex].weight = action.weight;
+      },
+    ),
+    updateStepsForCardioExercise: targetedSessionAction(
+      (
+        session,
+        action: {
+          steps: number | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
+      ) => {
+        const exercise = session.recordedExercises[action.exerciseIndex];
+        if (exercise.type !== 'RecordedCardioExercise') {
+          return;
+        }
+        exercise.sets[action.setIndex].steps = action.steps;
       },
     ),
 
     updateInclineForCardioExercise: targetedSessionAction(
       (
         session,
-        action: { incline: BigNumber | undefined; exerciseIndex: number },
+        action: {
+          incline: BigNumber | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'CardioRecordedExercise') {
+        if (exercise.type !== 'RecordedCardioExercise') {
           return;
         }
-        exercise.incline = action.incline;
+        exercise.sets[action.setIndex].incline = action.incline;
       },
     ),
 
     updateDistanceForCardioExercise: targetedSessionAction(
       (
         session,
-        action: { distance: Distance | undefined; exerciseIndex: number },
+        action: {
+          distance: Distance | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'CardioRecordedExercise') {
+        if (exercise.type !== 'RecordedCardioExercise') {
           return;
         }
-        exercise.distance = action.distance;
+        exercise.sets[action.setIndex].distance = action.distance;
+      },
+    ),
+
+    updateCurrentBlockStartTimeForCardioExercise: targetedSessionAction(
+      (
+        session,
+        action: {
+          time: OffsetDateTime | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
+      ) => {
+        const exercise = session.recordedExercises[action.exerciseIndex];
+        if (exercise.type !== 'RecordedCardioExercise') {
+          return;
+        }
+        exercise.sets[action.setIndex].currentBlockStartTime = action.time;
       },
     ),
 
     setCompletionTimeForCardioExercise: targetedSessionAction(
       (
         session,
-        action: { time: LocalDateTime | undefined; exerciseIndex: number },
+        action: {
+          time: OffsetDateTime | undefined;
+          exerciseIndex: number;
+          setIndex: number;
+        },
       ) => {
         const exercise = session.recordedExercises[action.exerciseIndex];
-        if (exercise.type !== 'CardioRecordedExercise') {
+        if (exercise.type !== 'RecordedCardioExercise') {
           return;
         }
-        exercise.completionDateTime = action.time;
+        exercise.sets[action.setIndex].completionDateTime = action.time;
       },
     ),
   },
@@ -461,9 +568,6 @@ export const clearSetTimerNotification = createAction(
 );
 
 export const notifySetTimer = createAction('notifySetTimer');
-export const completeSetFromNotification = createAction(
-  'completeSetFromNotification',
-);
 
 export const setCurrentSessionFromBlueprint = createAction<{
   target: SessionTarget;
@@ -474,6 +578,19 @@ export const persistCurrentSession = createAction<SessionTarget>(
   'persistCurrentSession',
 );
 
+export const broadcastWorkoutEvent = createAction<WorkoutMessage>(
+  'broadcastWorkoutEvent',
+);
+
+export const finishCurrentWorkout = createAction<SessionTarget>(
+  'finishCurrentWorkout',
+);
+
+export const currentWorkoutSessionUpdated = createAction<{
+  before: Session | undefined;
+  after: Session | undefined;
+}>('currentWorkoutSessionUpdated');
+
 export const {
   cycleExerciseReps,
   setActiveSessionDate,
@@ -483,15 +600,18 @@ export const {
   addExercise,
   setExerciseReps,
   updateWeightForSet,
-  setLatestSetTimerNotificationId,
   setCurrentSession,
   updateNotesForExercise,
+  setCurrentPlanDiff,
   updateBodyweight,
   setWorkoutSessionLastSetTime,
   updateDurationForCardioExercise,
   updateDistanceForCardioExercise,
+  updateCurrentBlockStartTimeForCardioExercise,
   updateInclineForCardioExercise,
   updateResistanceForCardioExercise,
+  updateWeightForCardioExercise,
+  updateStepsForCardioExercise,
   setCompletionTimeForCardioExercise,
 } = currentSessionSlice.actions;
 

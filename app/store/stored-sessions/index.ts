@@ -1,6 +1,7 @@
-import { LocalDateComparer, LocalDateTimeComparer } from '@/models/comparers';
 import {
+  fromRecordedExercisePOJO,
   RecordedExercise,
+  RecordedExercisePOJO,
   Session,
   SessionPOJO,
 } from '@/models/session-models';
@@ -8,16 +9,21 @@ import {
   NormalizedName,
   NormalizedNameKey,
   ExerciseBlueprint,
+  KeyedExerciseBlueprint,
+  fromExerciseBlueprintPOJO,
+  ExerciseBlueprintPOJO,
 } from '@/models/blueprint-models';
-import { LocalDate, YearMonth } from '@js-joda/core';
+import { LocalDate, OffsetDateTime, YearMonth, ZoneId } from '@js-joda/core';
 import {
   createAction,
   createSelector,
   createSlice,
   PayloadAction,
+  WritableDraft,
 } from '@reduxjs/toolkit';
 import Enumerable from 'linq';
 import { WeightUnit } from '@/models/weight';
+import { TemporalComparer } from '@/models/comparers';
 
 export interface ExerciseDescriptor {
   name: string;
@@ -38,6 +44,7 @@ export interface WeightMigrateableExercise {
 interface StoredSessionState {
   isHydrated: boolean;
   sessions: Record<string, SessionPOJO>;
+  latestExercises: Record<string, RecordedExercisePOJO | undefined>; // KeyedExerciseBlueprint -> RecordedExercise
   savedExercises: Record<string, ExerciseDescriptor>;
   filteredExerciseIds: string[];
   exercisesRequiringWeightMigration: WeightMigrateableExercise[];
@@ -46,6 +53,7 @@ interface StoredSessionState {
 const initialState: StoredSessionState = {
   isHydrated: false,
   sessions: {},
+  latestExercises: {},
   savedExercises: {},
   filteredExerciseIds: [],
   exercisesRequiringWeightMigration: [],
@@ -63,18 +71,49 @@ const storedSessionsSlice = createSlice({
       action: PayloadAction<Record<string, SessionPOJO>>,
     ) {
       state.sessions = action.payload;
+      Object.values(action.payload).forEach((session) => {
+        updateLatestExercises(state, Session.fromPOJO(session));
+      });
     },
 
     upsertStoredSessions(state, action: PayloadAction<Session[]>) {
-      action.payload.forEach((s) => (state.sessions[s.id] = s.toPOJO()));
+      action.payload.forEach((session) => {
+        state.sessions[session.id] = session.toPOJO();
+        updateLatestExercises(state, session);
+      });
     },
 
     addStoredSession(state, action: PayloadAction<Session>) {
       state.sessions[action.payload.id] = action.payload.toPOJO();
+      updateLatestExercises(state, action.payload);
     },
 
     deleteStoredSession(state, action: PayloadAction<string>) {
+      const deletedSession = state.sessions[action.payload];
       delete state.sessions[action.payload];
+
+      if (!deletedSession) return;
+
+      // Collect the exercise keys that were in the deleted session
+      const affectedKeys = new Set(
+        deletedSession.recordedExercises.map((e) =>
+          KeyedExerciseBlueprint.fromExerciseBlueprint(
+            fromExerciseBlueprintPOJO(e.blueprint as ExerciseBlueprintPOJO),
+          ).toString(),
+        ),
+      );
+
+      // For each affected key, clear and recalculate from remaining sessions
+      affectedKeys.forEach((key) => {
+        delete state.latestExercises[key];
+      });
+
+      Object.values(state.sessions).forEach((sessionPOJO) => {
+        updateLatestExercises(
+          state,
+          Session.fromPOJO(sessionPOJO as SessionPOJO),
+        );
+      });
     },
     updateExercise(
       state,
@@ -112,6 +151,16 @@ const storedSessionsSlice = createSlice({
   },
 
   selectors: {
+    selectLatestExercises: createSelector(
+      [(state: StoredSessionState) => state.latestExercises],
+      (exercises) =>
+        Object.fromEntries(
+          Object.entries(exercises).map(([key, exercise]) => [
+            key,
+            exercise ? fromRecordedExercisePOJO(exercise) : undefined,
+          ]),
+        ),
+    ),
     selectSessions: createSelector(
       [(state: StoredSessionState) => state.sessions],
       (sessions) => Object.values(sessions).map((x) => Session.fromPOJO(x)),
@@ -147,17 +196,37 @@ const storedSessionsSlice = createSlice({
   },
 });
 
+function updateLatestExercises(
+  state: WritableDraft<StoredSessionState>,
+  session: Session,
+) {
+  session.recordedExercises.forEach((exercise) => {
+    const key = KeyedExerciseBlueprint.fromExerciseBlueprint(
+      exercise.blueprint,
+    ).toString();
+    const latestExercise = state.latestExercises[key];
+    if (
+      !latestExercise ||
+      fromRecordedExercisePOJO(
+        latestExercise as RecordedExercisePOJO,
+      ).latestTime?.isBefore(exercise.latestTime ?? OffsetDateTime.MIN)
+    ) {
+      state.latestExercises[key] = exercise.toPOJO();
+    }
+  });
+}
+
 export const selectSessionsBy = createSelector(
   [
     storedSessionsSlice.selectors.selectSessions,
-    (_, date: LocalDate) => date,
-    (_, __, sessionName: string | undefined) => sessionName,
+    (_, minDate: LocalDate) => minDate,
+    (_, __, maxDate: LocalDate) => maxDate,
   ],
-  (sessions, date, sessionName) =>
+  (sessions, minDate, maxDate) =>
     Object.values(sessions).filter(
       (x) =>
-        (x.date.isAfter(date) || x.date.isEqual(date)) &&
-        (!sessionName || x.blueprint.name === sessionName),
+        (x.date.isAfter(minDate) || x.date.isEqual(minDate)) &&
+        (x.date.isBefore(maxDate) || x.date.isEqual(maxDate)),
     ),
 );
 
@@ -189,6 +258,7 @@ export const {
   selectCompletedDistinctSessionNames,
   selectSession,
   selectExercises,
+  selectLatestExercises,
   selectExerciseById,
 } = storedSessionsSlice.selectors;
 
@@ -210,7 +280,7 @@ export const selectLatestOrderedRecordedExercises = createSelector(
         (x) => x.key(),
         (x) =>
           x
-            .orderByDescending((x) => x.latestTime, LocalDateTimeComparer)
+            .orderByDescending((x) => x.latestTime, TemporalComparer)
             .take(maxRecordsPerExercise)
             .toArray(),
       );
@@ -233,10 +303,15 @@ export const selectSessionsInMonth = createSelector(
       .where(
         (x) => x.date.year() === ym.year() && x.date.month().equals(ym.month()),
       )
-      .orderByDescending((x) => x.date, LocalDateComparer)
+      .orderByDescending((x) => x.date, TemporalComparer)
       .thenByDescending(
-        (x) => x.lastExercise?.latestTime,
-        LocalDateTimeComparer,
+        (x) =>
+          x.lastExercise?.latestTime ??
+          x.date
+            .atStartOfDay()
+            .atZone(ZoneId.systemDefault())
+            .toOffsetDateTime(),
+        TemporalComparer,
       )
       .toArray(),
 );

@@ -1,14 +1,14 @@
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import EmptyInfo from '@/components/presentation/empty-info';
-import ExerciseBlueprintSummary from '@/components/presentation/exercise-blueprint-summary';
-import { ExerciseEditor } from '@/components/presentation/exercise-editor';
-import FloatingBottomContainer from '@/components/presentation/floating-bottom-container';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import FullScreenDialog from '@/components/presentation/full-screen-dialog';
-import ItemList from '@/components/presentation/item-list';
-import LabelledForm from '@/components/presentation/labelled-form';
-import LabelledFormRow from '@/components/presentation/labelled-form-row';
-import LimitedHtml from '@/components/presentation/limited-html';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
+import ExerciseBlueprintSummary from '@/components/presentation/workout-editor/exercise-blueprint-summary';
+import { ExerciseEditor } from '@/components/presentation/workout-editor/exercise-editor';
+import FloatingBottomContainer from '@/components/presentation/foundation/floating-bottom-container';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import FullScreenDialog from '@/components/presentation/foundation/full-screen-dialog';
+import ItemList from '@/components/presentation/foundation/item-list';
+import LabelledForm from '@/components/presentation/foundation/labelled-form';
+import LabelledFormRow from '@/components/presentation/foundation/labelled-form-row';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
 import CopyExerciseDialog from '@/components/smart/copy-exercise-dialog';
 import { spacing } from '@/hooks/useAppTheme';
 import {
@@ -136,7 +136,7 @@ function SessionEditor({
           variant="surface"
           size="small"
           icon={'add'}
-          label={t('AddExercise')}
+          label={t('exercise.add.title')}
           onPress={beginAddExercise}
         />
       }
@@ -146,7 +146,10 @@ function SessionEditor({
     <FullHeightScrollView floatingChildren={floatingBottomContainer}>
       <Stack.Screen options={{ title: session.name }} />
       <LabelledForm>
-        <LabelledFormRow label={t('WorkoutName')} icon={'assignmentFill'}>
+        <LabelledFormRow
+          label={t('workout.name.label')}
+          icon={'assignmentFill'}
+        >
           <TextInput
             mode="flat"
             value={session.name}
@@ -154,7 +157,7 @@ function SessionEditor({
             selectTextOnFocus
           />
         </LabelledFormRow>
-        <LabelledFormRow label={t('WorkoutNotes')} icon={'notesFill'}>
+        <LabelledFormRow label={t('workout.notes.label')} icon={'notesFill'}>
           <TextInput
             mode="flat"
             value={session.notes}
@@ -163,7 +166,7 @@ function SessionEditor({
           />
         </LabelledFormRow>
         <LabelledFormRow
-          label={t('Exercises')}
+          label={t('exercise.exercises.title')}
           icon={'fitnessCenterFill'}
           undoFormPadding
           noGap
@@ -175,7 +178,7 @@ function SessionEditor({
               <Card mode="contained" style={{ marginHorizontal: spacing[6] }}>
                 <Card.Content>
                   <EmptyInfo>
-                    <T keyName="NoExercisesAdded" />
+                    <T keyName="exercise.no_exercises_added.message" />
                   </EmptyInfo>
                 </Card.Content>
               </Card>
@@ -202,14 +205,15 @@ function SessionEditor({
         </LabelledFormRow>
       </LabelledForm>
       <FullScreenDialog
+        avoidKeyboard
         open={!!selectedExercise && isEditOpen}
         onClose={() => setIsEditOpen(false)}
         title={
           selectedExerciseIndex === undefined
-            ? t('AddExercise')
-            : t('EditExercise')
+            ? t('exercise.add.title')
+            : t('exercise.edit.title')
         }
-        action={t('Save')}
+        action={t('generic.save.button')}
         onAction={saveExercise}
       >
         {selectedExercise && (
@@ -220,7 +224,7 @@ function SessionEditor({
         )}
       </FullScreenDialog>
       <ConfirmationDialog
-        headline={t('RemoveExerciseQuestion')}
+        headline={t('exercise.remove.confirm.title')}
         onOk={() => {
           const selected = selectedExercise;
           setSelectedExercise(undefined);
@@ -232,9 +236,9 @@ function SessionEditor({
         open={!!selectedExercise && isRemoveOpen}
         textContent={
           <LimitedHtml
-            value={t('RemoveExerciseFromWorkoutMessage{Exercise}{Session}', {
-              0: selectedExercise?.name ?? '',
-              1: session.name,
+            value={t('exercise.remove_from_workout.confirm.body', {
+              exercise: selectedExercise?.name ?? '',
+              session: session.name,
             })}
           />
         }

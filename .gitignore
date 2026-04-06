@@ -22,7 +22,7 @@ mono_crash.*
 
 
 # Build results
-[Dd]ebug/
+build/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
@@ -382,6 +382,8 @@ my.secrets
 purchaseToken.txt
 
 appsettings.development.json
+backend/LiftLog.Api/appsettings.Development.json
 
 LiftLog.Web/wwwroot/crypto-utils.js
 LiftLog.Ui/wwwroot/app-utils.js
+tests/LiftLog.Tests.Api/appsettings.Development.json
