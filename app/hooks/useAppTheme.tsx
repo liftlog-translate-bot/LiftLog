@@ -12,13 +12,18 @@ import {
   DefaultTheme,
   Theme,
 } from '@react-navigation/native';
-import { MsIconSrc } from '@/components/presentation/ms-icon-source';
+import { MsIconSrc } from '@/components/presentation/foundation/ms-icon-source';
 import {
   argbFromHex,
   Blend,
   Hct,
   hexFromArgb,
 } from '@material/material-color-utilities';
+
+export const rounding = {
+  roundedRectangleRadius: 10,
+  roundedRectangleFocusRingRadius: 15,
+};
 
 export const spacing = {
   pageHorizontalMargin: 16, // spacing[4]
@@ -195,7 +200,7 @@ export const AppThemeProvider: React.FC<AppThemeProviderProps> = ({
       ...colorPair('lime', 'ffcddc39', schemedTheme.primary, isDark),
       ...colorPair('amber', 'ffffc107', schemedTheme.primary, isDark),
     } satisfies AppThemeColors,
-    colorScheme: colorScheme ?? 'light',
+    colorScheme: colorScheme === 'unspecified' ? 'light' : colorScheme,
   };
 
   const baseNavigationThem = isDark ? DarkTheme : DefaultTheme;

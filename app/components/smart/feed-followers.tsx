@@ -1,8 +1,8 @@
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import EmptyInfo from '@/components/presentation/empty-info';
-import LimitedHtml from '@/components/presentation/limited-html';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
 import { spacing, useAppTheme } from '@/hooks/useAppTheme';
-import { useScroll } from '@/hooks/useScollListener';
+import { useScroll } from '@/hooks/useScrollListener';
 import { FeedUser, FollowRequest } from '@/models/feed-models';
 import { useAppSelector } from '@/store';
 import {
@@ -17,12 +17,13 @@ import { T, useTranslate } from '@tolgee/react';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { List } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import { FlashList } from '@shopify/flash-list';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import { match, P } from 'ts-pattern';
+import { LegendList } from '@legendapp/list';
 
-type FeedFollowItem = FollowRequest | { userId: string; user: FeedUser };
+type FeedFollowItem = FollowRequest | FeedUser;
 
 export function FeedFollowers() {
   const followRequests = useAppSelector(
@@ -34,20 +35,24 @@ export function FeedFollowers() {
   const fetchingFeedItems = useAppSelector((x) => x.feed.isFetching);
   const dispatch = useDispatch();
   return (
-    <FlashList
+    <LegendList
       style={{ flex: 1 }}
       onRefresh={() => {
         dispatch(fetchInboxItems({ fromUserAction: true }));
       }}
       ListEmptyComponent={
         <EmptyInfo style={{ marginTop: spacing[8] }}>
-          <T keyName="NobodyFollowingYou" />
+          <T keyName="feed.nobody_following_you.message" />
         </EmptyInfo>
       }
       refreshing={fetchingFeedItems}
       onScroll={handleScroll}
       data={items}
-      keyExtractor={(x) => x.userId}
+      keyExtractor={(x) =>
+        match(x)
+          .with(P.instanceOf(FollowRequest), (req) => `request-${req.userId}`)
+          .otherwise((req) => req.id)
+      }
       renderItem={({ item }) => <FeedFollowItem item={item} />}
     />
   );
@@ -58,9 +63,7 @@ function FeedFollowItem(props: { item: FeedFollowItem }) {
     return <FeedFollowRequest request={props.item} />;
   }
 
-  return (
-    <FeedFollowersItem user={props.item.user} userId={props.item.userId} />
-  );
+  return <FeedFollowersItem user={props.item} userId={props.item.id} />;
 }
 
 function FeedFollowRequest(props: { request: FollowRequest }) {
@@ -91,8 +94,8 @@ function FeedFollowRequest(props: { request: FollowRequest }) {
       title={props.request.name}
       description={
         <LimitedHtml
-          value={t('UserWantsToFollowYou{User}', {
-            0: props.request.name ?? 'Anonymous user',
+          value={t('feed.user_wants_to_follow_you.message', {
+            user: props.request.name ?? 'Anonymous user',
           })}
         />
       }
@@ -110,7 +113,7 @@ function FeedFollowRequest(props: { request: FollowRequest }) {
               icon={'check'}
               onPress={handleAccept}
             >
-              {t('Accept')}
+              {t('generic.accept.button')}
             </Button>
           </View>
         );
@@ -136,10 +139,10 @@ function FeedFollowersItem(props: { user: FeedUser; userId: string }) {
     <>
       <ConfirmationDialog
         open={confirmRemoveVisible}
-        headline={t('RemoveFollower')}
-        textContent={`${t('RemoveFollowerMsgPart1')} ${props.user.name} ${t('RemoveFollowerMsgPart2')}`}
+        headline={t('feed.remove_follower.button')}
+        textContent={`${t('feed.remove_follower.confirm.body_part1')} ${props.user.name} ${t('feed.remove_follower.confirm.body_part2')}`}
         onOk={unfollow}
-        okText={t('Remove')}
+        okText={t('generic.remove.button')}
         onCancel={() => {
           setConfirmRemoveVisible(false);
         }}
@@ -148,8 +151,8 @@ function FeedFollowersItem(props: { user: FeedUser; userId: string }) {
         title={
           <LimitedHtml
             emStyles={{}}
-            value={t('UserIsFollowingYou{User}', {
-              0: props.user.name ?? 'Anonymous User',
+            value={t('feed.user_is_following_you.message', {
+              user: props.user.name ?? 'Anonymous User',
             })}
           />
         }

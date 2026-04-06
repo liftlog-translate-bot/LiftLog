@@ -1,14 +1,14 @@
-import { SurfaceText } from '@/components/presentation/surface-text';
+import { SurfaceText } from '@/components/presentation/foundation/surface-text';
 import { spacing, useAppTheme } from '@/hooks/useAppTheme';
 
 import { T, useTranslate } from '@tolgee/react';
 import { Stack, useRouter } from 'expo-router';
-import { Platform, View } from 'react-native';
+import { I18nManager, Platform, View } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useDispatch } from 'react-redux';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import {
   Appbar,
   TextInput,
@@ -31,15 +31,15 @@ import Animated, {
   ZoomInRight,
 } from 'react-native-reanimated';
 import { uuid } from '@/utils/uuid';
-import { useScroll } from '@/hooks/useScollListener';
-import SessionSummary from '@/components/presentation/session-summary';
-import SessionSummaryTitle from '@/components/presentation/session-summary-title';
+import { useScroll } from '@/hooks/useScrollListener';
+import SessionSummary from '@/components/presentation/summary/session-summary';
+import SessionSummaryTitle from '@/components/presentation/summary/session-summary-title';
 import { AiChatMessageResponse, AiChatPlanResponse } from '@/models/ai-models';
 import { savePlan } from '@/store/program';
 import { ProgramBlueprint } from '@/models/blueprint-models';
 import { LocalDate } from '@js-joda/core';
 import { match } from 'ts-pattern';
-import LimitedHtml from '@/components/presentation/limited-html';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
 import { useMountEffect } from '@/hooks/useMountEffect';
 
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
@@ -84,9 +84,9 @@ export default function AiPlanner() {
     >
       <Stack.Screen
         options={{
-          title: t('AiPlanner'),
+          title: t('ai.planner.title'),
           headerRight: () => (
-            <Tooltip title={t('Restart chat')}>
+            <Tooltip title={t('ai.restart_chat.button')}>
               <Appbar.Action icon={'replay'} onPress={reset}></Appbar.Action>
             </Tooltip>
           ),
@@ -136,7 +136,7 @@ export default function AiPlanner() {
           }}
           onChangeText={setMessageText}
           multiline
-          placeholder={t('Type your message')}
+          placeholder={t('ai.type_your_message.placeholder')}
           onSubmitEditing={(e) => setMessageText(e.nativeEvent.text + '\n')}
           submitBehavior="submit"
           returnKeyType="default"
@@ -156,6 +156,7 @@ export default function AiPlanner() {
           mode="contained"
           icon={'send'}
           size={35}
+          mirrored={I18nManager.isRTL}
           onPress={() => sendMessage(messageText)}
         />
       </View>
@@ -189,7 +190,7 @@ function ChatBubble(props: {
       <Animated.View
         entering={
           isLastMessage
-            ? zoom.duration(400).springify().damping(18).stiffness(150)
+            ? zoom.springify().damping(18).stiffness(150).duration(400)
             : undefined!
         }
         style={{
@@ -288,7 +289,7 @@ function PlanMessage({
             icon={'assignmentAdd'}
             onPress={() => saveAiPlan(message)}
           >
-            <T keyName="Save new plan" />
+            <T keyName="plan.save_new.button" />
           </Button>
         </Animated.View>
       )}
@@ -320,16 +321,16 @@ function ProPrompt() {
   }
   return (
     <View style={{ gap: spacing[2] }}>
-      <SurfaceText>{t('UpgradeToPro')}</SurfaceText>
+      <SurfaceText>{t('ai.upgrade_to_pro.button')}</SurfaceText>
       <SurfaceText>
-        <LimitedHtml value={t('UpgradeToProDescription')} /> <ProPrice />
+        <LimitedHtml value={t('ai.upgrade_to_pro.explanation')} /> <ProPrice />
       </SurfaceText>
       <Button
         style={{ alignSelf: 'flex-end' }}
         mode="contained"
         onPress={upgrade}
       >
-        {t('Upgrade')}
+        {t('generic.upgrade.button')}
       </Button>
     </View>
   );

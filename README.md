@@ -21,13 +21,17 @@
 
 ### Key Features
 
+- 🗿 Intuitive UI which lets you log your progression, without getting in your way
+- Entirely device local workouts, no waiting for sign in or downloads
 - 📱 Runs on Android, iOS, and web
-- 🧠 AI planner tailors gym plans to your goals and body
 - 🔒 End-to-end encrypted social feeds (opt-in, privacy-first)
 - 🎨 Material Design 3 via React Native Paper
 - 🌐 Internationalization with Tolgee/Weblate (10+ languages)
 - 🏋️‍♂️ Publish workouts, follow other users, and control your feed privacy
+- 🧠 AI planner tailors gym plans to your goals and body
 - ⚡ Fast, modern UI with Expo Router and Redux Toolkit
+
+📍 **[View the Roadmap](./ROADMAP.md)** to see what's planned!
 
 ---
 
@@ -37,7 +41,7 @@ LiftLog uses [Weblate](https://translate.liftlog.online/) for internationalizati
 
 [![Translation status](https://translate.liftlog.online/widget/liftlog/multi-auto.svg)](https://translate.liftlog.online/engage/liftlog/)
 
-Want to help translate? [Open an issue or PR](https://github.com/LiamMorrow/LiftLog/issues).
+Want to help translate? [Create an account on Weblate!](https://translate.liftlog.online/)
 
 ---
 
@@ -62,12 +66,7 @@ npm run web       # For web
 
 ### Run the Backend API
 
-```bash
-cd LiftLog.Api
-dotnet run
-```
-
-See [`backend/LiftLog.Api/README.md`](./backend/LiftLog.Api/README.md) for backend details.
+See [`backend/README.md`](./backend/README.md) for more information on running the backend.
 
 ---
 
@@ -85,11 +84,13 @@ LiftLog is organized into several projects:
 - **Translations**: `i18n/` (Tolgee)
 - **Navigation**: Expo Router
 
-### Backend ([LiftLog.Api/](./backend/LiftLog.Api/))
+### Backend ([LiftLog.Api/](./backend/))
+
+For documentation on running the backend for local development, see [the README](./backend/README.md)
 
 - **Dotnet WebAPI** for feeds, AI plans, and secure data
 - **End-to-end encrypted feeds** (AES)
-- **OpenAI integration** for workout plans
+- **Claude integration** for workout plans
 
 ### RevenueCat ([RevenueCat/](./backend/RevenueCat/))
 
@@ -119,9 +120,10 @@ Contributions, issues, and feature requests are welcome! See [CONTRIBUTING.md](.
 
 ## 📚 Documentation
 
-- [Feed Process](./docs/FeedProcess.md)
-- [Remote Backup](./docs/RemoteBackup.md)
-- [Plaintext Export](./docs/PlaintextExport.md)
+- [Feed Process](./docs/FeedProcess.md) - Documents how the feed and sharing works, especially around e2e encryption.
+- [Remote Backup](./docs/RemoteBackup.md) - Documents how to connect LiftLog to a remote backup server.
+- [Plaintext Export](./docs/PlaintextExport.md) - Documents how to export your data as plaintext.
+- [Workout Worker](./docs/WorkoutWorker.md) - Documents the WorkoutWorker, an event based bridge between native and JS which powers the Android persistent notifications.
 
 ## 💬 Support & Community
 

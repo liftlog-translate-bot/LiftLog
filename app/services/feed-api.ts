@@ -17,10 +17,10 @@ import {
   CreateSharedItemResponse,
   GetSharedItemResponse,
 } from '@/models/feed-api-models';
+import { apiBaseUrl } from '@/services/api-consts';
 import { ApiErrorType, ApiResult, ResponseError } from '@/services/api-error';
 import type { FetchResponse } from 'expo/build/winter/fetch/FetchResponse';
 import { fetch } from 'expo/fetch';
-import { Platform } from 'react-native';
 
 type Base64Response<T> = T extends Uint8Array
   ? string
@@ -36,21 +36,14 @@ export class FeedApiService {
   private readonly baseUrl: string;
 
   constructor() {
-    if (__DEV__) {
-      this.baseUrl =
-        Platform.OS === 'android'
-          ? 'http://10.0.2.2:5264/'
-          : 'http://127.0.0.1:5264/';
-    } else {
-      this.baseUrl = 'https://api.liftlog.online/';
-    }
+    this.baseUrl = apiBaseUrl;
   }
 
   async getUserEventsAsync(
     request: GetEventsRequest,
   ): Promise<ApiResult<GetEventsResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}events`, {
+      const response = await fetch(`${this.baseUrl}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -76,7 +69,7 @@ export class FeedApiService {
 
   async createUserAsync(): Promise<ApiResult<CreateUserResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}user/create`, {
+      const response = await fetch(`${this.baseUrl}/user/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -88,7 +81,7 @@ export class FeedApiService {
 
   async getUserAsync(idOrLookup: string): Promise<ApiResult<GetUserResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}user/${idOrLookup}`);
+      const response = await fetch(`${this.baseUrl}/user/${idOrLookup}`);
       this.ensureSuccessStatusCode(response);
       const base64Response =
         (await response.json()) as Base64Response<GetUserResponse>;
@@ -114,7 +107,7 @@ export class FeedApiService {
     request: PutUserDataRequest,
   ): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}user`, {
+      const response = await fetch(`${this.baseUrl}/user`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -127,7 +120,7 @@ export class FeedApiService {
     request: PutUserEventRequest,
   ): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}event`, {
+      const response = await fetch(`${this.baseUrl}/event`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -140,7 +133,7 @@ export class FeedApiService {
     request: GetUsersRequest,
   ): Promise<ApiResult<GetUsersResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}users`, {
+      const response = await fetch(`${this.baseUrl}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -175,7 +168,7 @@ export class FeedApiService {
 
   async deleteUserAsync(request: DeleteUserRequest): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}user/delete`, {
+      const response = await fetch(`${this.baseUrl}/user/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -188,7 +181,7 @@ export class FeedApiService {
     request: PutInboxMessageRequest,
   ): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}inbox`, {
+      const response = await fetch(`${this.baseUrl}/inbox`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -201,7 +194,7 @@ export class FeedApiService {
     request: GetInboxMessagesRequest,
   ): Promise<ApiResult<GetInboxMessagesResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}inbox`, {
+      const response = await fetch(`${this.baseUrl}/inbox`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -224,7 +217,7 @@ export class FeedApiService {
     request: PutUserFollowSecretRequest,
   ): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}follow-secret`, {
+      const response = await fetch(`${this.baseUrl}/follow-secret`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -237,7 +230,7 @@ export class FeedApiService {
     request: DeleteUserFollowSecretRequest,
   ): Promise<ApiResult<void>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}follow-secret/delete`, {
+      const response = await fetch(`${this.baseUrl}/follow-secret/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -250,7 +243,7 @@ export class FeedApiService {
     request: CreateSharedItemRequest,
   ): Promise<ApiResult<CreateSharedItemResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}shareditem`, {
+      const response = await fetch(`${this.baseUrl}/shareditem`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: stringify(request),
@@ -264,7 +257,9 @@ export class FeedApiService {
     sharedItemId: string,
   ): Promise<ApiResult<GetSharedItemResponse>> {
     return this.getApiResultAsync(async () => {
-      const response = await fetch(`${this.baseUrl}shareditem/${sharedItemId}`);
+      const response = await fetch(
+        `${this.baseUrl}/shareditem/${sharedItemId}`,
+      );
       this.ensureSuccessStatusCode(response);
       const base4Response =
         (await response.json()) as Base64Response<GetSharedItemResponse>;

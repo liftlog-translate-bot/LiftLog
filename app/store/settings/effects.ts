@@ -4,8 +4,11 @@ import {
   initializeSettingsStateSlice,
   setBackupReminder,
   setColorSchemeSeed,
+  setCrashReportsEnabled,
+  setExportToHealthAggregator,
   setFirstDayOfWeek,
   setIsHydrated,
+  setKeepScreenAwakeDuringWorkout,
   setLastBackup,
   setNotesExpandedByDefault,
   setPreferredLanguage,
@@ -17,18 +20,20 @@ import {
   setShowTips,
   setTipToShow,
   setUseImperialUnits,
+  setWelcomeWizardCompleted,
 } from '@/store/settings';
 import { addExportBackupEffects } from '@/store/settings/export-backup-effects';
 import { addExportPlaintextEffects } from '@/store/settings/export-plaintext-effects';
 import { addImportBackupEffects } from '@/store/settings/import-backup-effects';
 import { addRemoteBackupEffects } from '@/store/settings/remote-backup-effects';
 import Purchases from 'react-native-purchases';
-import { Platform } from 'react-native';
+import { I18nManager, Platform } from 'react-native';
 import { captureException } from '@sentry/react-native';
 import { detectLanguageFromDateLocale } from '@/utils/language-detector';
 import { supportedLanguages } from '@/services/tolgee';
 import { initializeStoredSessionsStateSlice } from '@/store/stored-sessions';
 import { initializeCurrentSessionStateSlice } from '@/store/current-session';
+import * as Sentry from '@sentry/react-native';
 
 export function applySettingsEffects() {
   addEffect(
@@ -47,6 +52,8 @@ export function applySettingsEffects() {
         tipToShow,
         showFeed,
         restNotifications,
+        crashReportsEnabled,
+        welcomeWizardCompleted,
         remoteBackupSettings,
         lastSuccessfulRemoteBackupHash,
         lastBackupTime,
@@ -55,6 +62,8 @@ export function applySettingsEffects() {
         colorSchemeSeed,
         proToken,
         notesExpandedByDefault,
+        keepScreenAwakeDuringWorkout,
+        exportToHealthAggregator,
       ] = await Promise.all([
         preferenceService.getUseImperialUnits(),
         preferenceService.getShowBodyweight(),
@@ -62,6 +71,8 @@ export function applySettingsEffects() {
         preferenceService.getTipToShow(),
         preferenceService.getShowFeed(),
         preferenceService.getRestNotifications(),
+        preferenceService.getCrashReportsEnabled(),
+        preferenceService.getWelcomeWizardCompleted(),
         preferenceService.getRemoteBackupSettings(),
         preferenceService.getLastSuccessfulRemoteBackupHash(),
         preferenceService.getLastBackupTime(),
@@ -70,6 +81,8 @@ export function applySettingsEffects() {
         preferenceService.getColorSchemeSeed(),
         preferenceService.getProToken(),
         preferenceService.getNotesExpandedByDefault(),
+        preferenceService.getKeepScreenAwakeDuringWorkout(),
+        preferenceService.getExportToHealthAggregator(),
       ]);
       dispatch(setColorSchemeSeed(colorSchemeSeed));
       dispatch(setUseImperialUnits(useImperialUnits));
@@ -78,7 +91,10 @@ export function applySettingsEffects() {
       dispatch(setTipToShow(tipToShow));
       dispatch(setShowFeed(showFeed));
       dispatch(setRestNotifications(restNotifications));
+      dispatch(setCrashReportsEnabled(crashReportsEnabled));
+      dispatch(setWelcomeWizardCompleted(welcomeWizardCompleted));
       dispatch(setRemoteBackupSettings(remoteBackupSettings));
+      dispatch(setPreferredLanguage(preferenceService.getPreferredLanguage()));
       dispatch(
         setLastBackup(
           lastSuccessfulRemoteBackupHash
@@ -94,6 +110,8 @@ export function applySettingsEffects() {
       dispatch(setFirstDayOfWeek(firstDayOfWeek));
       dispatch(setProToken(proToken));
       dispatch(setNotesExpandedByDefault(notesExpandedByDefault));
+      dispatch(setKeepScreenAwakeDuringWorkout(keepScreenAwakeDuringWorkout));
+      dispatch(setExportToHealthAggregator(exportToHealthAggregator));
 
       if (Platform.OS === 'ios') {
         Purchases.configure({
@@ -160,11 +178,15 @@ export function applySettingsEffects() {
     ) => {
       if (stateAfterReduce.settings.isHydrated) {
         await preferenceService.setPreferredLanguage(action.payload);
-        await tolgee.changeLanguage(
-          action.payload ??
-            detectLanguageFromDateLocale(supportedLanguages.map((x) => x.code)),
-        );
       }
+      const languageCode =
+        action.payload ??
+        detectLanguageFromDateLocale(supportedLanguages.map((x) => x.code));
+      const languageSettings = supportedLanguages.find(
+        (x) => x.code === languageCode,
+      );
+      await tolgee.changeLanguage(languageCode);
+      I18nManager.forceRTL(!!languageSettings?.isRTL);
     },
   );
 
@@ -189,6 +211,58 @@ export function applySettingsEffects() {
     async (action, { stateAfterReduce, extra: { preferenceService } }) => {
       if (stateAfterReduce.settings.isHydrated) {
         await preferenceService.setRestNotifications(action.payload);
+      }
+    },
+  );
+  addEffect(
+    setCrashReportsEnabled,
+    async (action, { stateAfterReduce, extra: { preferenceService } }) => {
+      if (stateAfterReduce.settings.isHydrated) {
+        await preferenceService.setCrashReportsEnabled(action.payload);
+      }
+      if (action.payload) {
+        // Sentry.init({
+        //   dsn: 'https://86576716425e1558b5e8622ba65d4544@o4505937515249664.ingest.us.sentry.io/4509717493383168',
+        //   // Adds more context data to events (IP address, cookies, user, etc.)
+        //   // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+        //   sendDefaultPii: true,
+        //   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+        //   // spotlight: __DEV__,
+        //   attachViewHierarchy: true,
+        // });
+      } else {
+        await Sentry.close();
+      }
+    },
+  );
+
+  addEffect(
+    setExportToHealthAggregator,
+    async (
+      action,
+      {
+        stateAfterReduce,
+        dispatch,
+        extra: { preferenceService, healthExportService },
+      },
+    ) => {
+      if (action.payload && !healthExportService.canExport()) {
+        dispatch(setExportToHealthAggregator(false));
+        return;
+      }
+      if (stateAfterReduce.settings.isHydrated) {
+        if (action.payload) {
+          await healthExportService.requestPermission();
+        }
+        await preferenceService.setExportToHealthAggregator(action.payload);
+      }
+    },
+  );
+  addEffect(
+    setWelcomeWizardCompleted,
+    async (action, { stateAfterReduce, extra: { preferenceService } }) => {
+      if (stateAfterReduce.settings.isHydrated) {
+        await preferenceService.setWelcomeWizardCompleted(action.payload);
       }
     },
   );
@@ -252,6 +326,15 @@ export function applySettingsEffects() {
     async (action, { stateAfterReduce, extra: { preferenceService } }) => {
       if (stateAfterReduce.settings.isHydrated) {
         await preferenceService.setNotesExpandedByDefault(action.payload);
+      }
+    },
+  );
+
+  addEffect(
+    setKeepScreenAwakeDuringWorkout,
+    async (action, { stateAfterReduce, extra: { preferenceService } }) => {
+      if (stateAfterReduce.settings.isHydrated) {
+        await preferenceService.setKeepScreenAwakeDuringWorkout(action.payload);
       }
     },
   );

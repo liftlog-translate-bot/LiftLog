@@ -15,7 +15,7 @@ import { useTranslate } from '@tolgee/react';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
 import { List, Menu, RadioButton } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
@@ -53,15 +53,15 @@ function ItemMenu({ id }: ItemProps) {
           setMenuVisible(false);
         }}
         leadingIcon={'edit'}
-        title={t('Edit')}
+        title={t('generic.edit.button')}
       />
       <Menu.Item
         onPress={() => {
           if (!isActive) {
             dispatch(
               showSnackbar({
-                text: t('PlanDeleted'),
-                action: t('Undo'),
+                text: t('plan.deleted.message'),
+                action: t('generic.undo.button'),
                 dispatchAction: savePlan({
                   programId: id,
                   programBlueprint: thisProgram,
@@ -74,10 +74,10 @@ function ItemMenu({ id }: ItemProps) {
         }}
         leadingIcon={'delete'}
         disabled={isActive}
-        title={t('Remove')}
+        title={t('generic.remove.button')}
       />
       <Menu.Item
-        title={t('Duplicate')}
+        title={t('generic.duplicate.button')}
         leadingIcon={'contentCopy'}
         onPress={() => {
           setMenuVisible(false);
@@ -88,10 +88,15 @@ function ItemMenu({ id }: ItemProps) {
       />
       <Menu.Item
         leadingIcon={'share'}
-        title={t('Share')}
+        title={t('generic.share.button')}
         onPress={() => {
           setMenuVisible(false);
-          dispatch(encryptAndShare(new SharedProgramBlueprint(thisProgram)));
+          dispatch(
+            encryptAndShare({
+              title: t('plan.shared_item.title'),
+              item: new SharedProgramBlueprint(thisProgram),
+            }),
+          );
         }}
       />
     </Menu>
@@ -113,7 +118,7 @@ export default function ProgramListItem({
   const [focusStyle, setFocusStyle] = useState({});
   useEffect(() => {
     let times = 0;
-    let timeout: number = 0;
+    let timeout: NodeJS.Timeout;
     const handleTimes = () => {
       times++;
       setFocusStyle(
@@ -138,8 +143,8 @@ export default function ProgramListItem({
   return (
     <List.Item
       title={program.name}
-      description={t('EditedOn{Date}', {
-        0: program.lastEdited.format(DateTimeFormatter.ISO_DATE),
+      description={t('date.edited_on.label', {
+        date: program.lastEdited.format(DateTimeFormatter.ISO_DATE),
       })}
       onLongPress={() => push(`/settings/manage-workouts/${id}`)}
       titleStyle={focusStyle}

@@ -1,3 +1,4 @@
+import { LiftLog } from '@/gen/proto';
 import {
   WeightedExerciseBlueprint,
   WeightedExerciseBlueprintPOJO,
@@ -7,16 +8,42 @@ import {
   CardioExerciseBlueprint,
   ExerciseBlueprint,
   Distance,
+  CardioExerciseSetBlueprint,
+  CardioExerciseSetBlueprintPOJO,
+  DistanceUnit,
+  fromExerciseBlueprintDao,
 } from '@/models/blueprint-models';
-import { LocalDateTimeComparer } from '@/models/comparers';
-import { Weight, WeightUnit } from '@/models/weight';
+import { TemporalComparer } from '@/models/comparers';
+import {
+  fromWeightUnitDao,
+  toWeightUnitDao,
+  Weight,
+  WeightUnit,
+} from '@/models/weight';
 import { DeepOmit } from '@/utils/deep-omit';
 import { indexed } from '@/utils/enumerable';
 import { uuid } from '@/utils/uuid';
-import { Duration, LocalDate, LocalDateTime, ZoneOffset } from '@js-joda/core';
+import { Duration, LocalDate, OffsetDateTime, ZoneOffset } from '@js-joda/core';
 import BigNumber from 'bignumber.js';
 import Enumerable from 'linq';
 import { match, P } from 'ts-pattern';
+import {
+  toDateOnlyDao,
+  toDateTimeDao,
+  toDecimalDao,
+  toDurationDao,
+  toStringValue,
+  toTimeOnlyDao,
+  toUuidDao,
+} from './storage/conversions.to-dao';
+import {
+  fromDateOnlyDao,
+  fromDateTimeDao,
+  fromDecimalDao,
+  fromDurationDao,
+  fromTimeOnlyDao,
+  fromUuidDao,
+} from './storage/conversions.from-dao';
 
 export interface SessionPOJO {
   type: 'Session';
@@ -94,18 +121,8 @@ export class Session {
               undefined,
             ),
         )
-        .with(
-          P.instanceOf(CardioExerciseBlueprint),
-          (ce) =>
-            new RecordedCardioExercise(
-              ce,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-            ),
+        .with(P.instanceOf(CardioExerciseBlueprint), (ce) =>
+          RecordedCardioExercise.empty(ce),
         )
         .exhaustive();
     }
@@ -149,7 +166,7 @@ export class Session {
     return (
       this.id === other.id &&
       this.date.equals(other.date) &&
-      WeightEqual(this.bodyweight, other.bodyweight) &&
+      weightEqual(this.bodyweight, other.bodyweight) &&
       this.blueprint.equals(other.blueprint) &&
       this.recordedExercises.length === other.recordedExercises.length &&
       this.recordedExercises.every((exercise, index) =>
@@ -187,6 +204,50 @@ export class Session {
       id: this.id,
       recordedExercises: this.recordedExercises.map((x) => x.toPOJO()),
     };
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionHistoryDao.ISessionDaoV2 | null | undefined,
+  ): Session {
+    if (!dao) {
+      throw new Error('Session dao cannot be null');
+    }
+    const recordedExercises =
+      dao.recordedExercises?.map((x) =>
+        fromRecordedExerciseDao(dao.date!, x).toPOJO(),
+      ) ?? [];
+    return Session.fromPOJO({
+      id: fromUuidDao(dao.id),
+      blueprint: SessionBlueprint.fromPOJO({
+        name: dao.sessionName!,
+        exercises: recordedExercises.map((x) => x.blueprint),
+        notes: dao.blueprintNotes ?? '',
+      }).toPOJO(),
+      bodyweight: dao.bodyweightValue
+        ? new Weight(
+            fromDecimalDao(dao.bodyweightValue),
+            fromWeightUnitDao(dao.bodyweightUnit),
+          )
+        : undefined,
+      date: fromDateOnlyDao(dao.date),
+      recordedExercises,
+    });
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.SessionDaoV2 {
+    return new LiftLog.Ui.Models.SessionHistoryDao.SessionDaoV2({
+      id: toUuidDao(this.id),
+      sessionName: this.blueprint.name,
+      blueprintNotes: this.blueprint.notes,
+      recordedExercises: this.recordedExercises.map((x) => x.toDao()),
+      date: toDateOnlyDao(this.date),
+      bodyweightValue: this.bodyweight
+        ? toDecimalDao(this.bodyweight.value)
+        : null,
+      bodyweightUnit: this.bodyweight
+        ? toWeightUnitDao(this.bodyweight.unit)
+        : LiftLog.Ui.Models.WeightUnit.NIL,
+    });
   }
 
   static freeformSession(
@@ -227,10 +288,18 @@ export class Session {
 
   get nextExercise(): RecordedExercise | undefined {
     const recordedExercises = this.recordedExercises;
+    const cardioExerciseWithRunningTimer = recordedExercises.find(
+      (x) =>
+        x instanceof RecordedCardioExercise &&
+        x.sets.some((s) => s.currentBlockStartTime),
+    );
+    if (cardioExerciseWithRunningTimer) {
+      return cardioExerciseWithRunningTimer;
+    }
     const latestExerciseIndex = Enumerable.from(recordedExercises)
       .select(indexed)
       .where((x) => x.item.isStarted)
-      .orderByDescending(({ item }) => item.latestTime, LocalDateTimeComparer)
+      .orderByDescending(({ item }) => item.latestTime, TemporalComparer)
       .select((x) => x.index)
       .firstOrDefault(-1);
 
@@ -296,8 +365,7 @@ export class Session {
     for (const recordedExercise of recordedExercises) {
       if (!recordedExercise.isComplete) {
         const latestTime = recordedExercise.latestTime;
-        const epochSecond =
-          latestTime?.toEpochSecond(ZoneOffset.UTC) ?? Number.MIN_VALUE;
+        const epochSecond = latestTime?.toEpochSecond() ?? Number.MIN_VALUE;
 
         if (epochSecond > maxEpochSecond || !result) {
           maxEpochSecond = epochSecond;
@@ -312,7 +380,7 @@ export class Session {
     return Enumerable.from(this.recordedExercises)
       .where((x) => x.isStarted)
       .defaultIfEmpty(undefined)
-      .maxBy((x) => x.latestTime?.toInstant(ZoneOffset.UTC).toEpochMilli());
+      .maxBy((x) => x.latestTime?.toInstant().toEpochMilli());
   }
 
   get latestWeightedExercise(): RecordedWeightedExercise | undefined {
@@ -320,14 +388,14 @@ export class Session {
       .where((x) => x.isStarted)
       .where((x) => x instanceof RecordedWeightedExercise)
       .defaultIfEmpty(undefined)
-      .maxBy((x) => x.latestTime?.toInstant(ZoneOffset.UTC).toEpochMilli());
+      .maxBy((x) => x.latestTime?.toInstant().toEpochMilli());
   }
 
   get firstExercise(): RecordedExercise | undefined {
     return Enumerable.from(this.recordedExercises)
       .where((x) => x.isStarted)
       .defaultIfEmpty(undefined)
-      .minBy((x) => x.latestTime?.toInstant(ZoneOffset.UTC).toEpochMilli());
+      .minBy((x) => x.latestTime?.toInstant().toEpochMilli());
   }
 
   get isFreeform(): boolean {
@@ -349,14 +417,14 @@ export function fromRecordedExercisePOJO(
   return match(pojo)
     .with(
       P.union(
-        { type: 'CardioRecordedExercise' },
+        { type: 'RecordedCardioExercise' },
         P.instanceOf(RecordedCardioExercise),
       ),
       RecordedCardioExercise.fromPOJO,
     )
     .with(
       P.union(
-        { type: 'WeightedRecordedExercise' },
+        { type: 'RecordedWeightedExercise' },
         P.instanceOf(RecordedWeightedExercise),
       ),
       RecordedWeightedExercise.fromPOJO,
@@ -378,74 +446,39 @@ export function createEmptyRecordedExercise(
     .exhaustive();
 }
 
-export interface RecordedCardioExercisePOJO {
-  type: 'CardioRecordedExercise';
-  blueprint: CardioExerciseBlueprintPOJO;
-  completionDateTime: LocalDateTime | undefined;
-  duration: Duration | undefined;
-  distance: Distance | undefined;
-  resistance: BigNumber | undefined;
-  incline: BigNumber | undefined;
-  notes: string | undefined;
-}
-export class RecordedCardioExercise {
-  readonly blueprint: CardioExerciseBlueprint;
-  readonly completionDateTime: LocalDateTime | undefined;
+export interface RecordedCardioExerciseSetPOJO {
+  readonly type: 'RecordedCardioExerciseSet';
+  readonly blueprint: CardioExerciseSetBlueprintPOJO;
+  readonly completionDateTime: OffsetDateTime | undefined;
   readonly duration: Duration | undefined;
   readonly distance: Distance | undefined;
   readonly resistance: BigNumber | undefined;
   readonly incline: BigNumber | undefined;
-  readonly notes: string | undefined;
+  readonly weight: Weight | undefined;
+  readonly steps: number | undefined;
 
-  /**
-   * @deprecated please use full constructor. Here only for serialization
-   */
-  constructor();
+  readonly currentBlockStartTime: OffsetDateTime | undefined;
+}
+
+export class RecordedCardioExerciseSet {
   constructor(
-    blueprint: CardioExerciseBlueprint,
-    completionDateTime: LocalDateTime | undefined,
-    duration: Duration | undefined,
-    distance: Distance | undefined,
-    resistance: BigNumber | undefined,
-    incline: BigNumber | undefined,
-    notes: string | undefined,
-  );
-  constructor(
-    blueprint?: CardioExerciseBlueprint,
-    completionDateTime?: LocalDateTime,
-    duration?: Duration,
-    distance?: Distance,
-    resistance?: BigNumber,
-    incline?: BigNumber,
-    notes?: string,
-  ) {
-    this.blueprint = blueprint!;
-    this.completionDateTime = completionDateTime;
-    this.duration = duration;
-    this.distance = distance;
-    this.resistance = resistance;
-    this.incline = incline;
-    this.notes = notes;
-  }
-
-  static fromPOJO(
-    pojo: DeepOmit<RecordedCardioExercisePOJO, 'type'>,
-  ): RecordedCardioExercise {
-    return new RecordedCardioExercise(
-      CardioExerciseBlueprint.fromPOJO(
-        pojo.blueprint as CardioExerciseBlueprintPOJO, // we lost type
-      ),
-      pojo.completionDateTime,
-      pojo.duration,
-      pojo.distance,
-      pojo.resistance,
-      pojo.incline,
-      pojo.notes,
-    );
-  }
-
-  static empty(blueprint: CardioExerciseBlueprint): RecordedCardioExercise {
-    return new RecordedCardioExercise(
+    readonly blueprint: CardioExerciseSetBlueprint,
+    readonly completionDateTime: OffsetDateTime | undefined,
+    readonly duration: Duration | undefined,
+    readonly distance: Distance | undefined,
+    readonly resistance: BigNumber | undefined,
+    readonly incline: BigNumber | undefined,
+    readonly weight: Weight | undefined,
+    readonly steps: number | undefined,
+    /**
+     * Describes the start time of a currently running timer. This is not persisted
+     */
+    readonly currentBlockStartTime: OffsetDateTime | undefined,
+  ) {}
+  static empty(
+    blueprint: CardioExerciseSetBlueprint,
+  ): RecordedCardioExerciseSet {
+    return new RecordedCardioExerciseSet(
       blueprint,
       undefined,
       undefined,
@@ -453,48 +486,112 @@ export class RecordedCardioExercise {
       undefined,
       undefined,
       undefined,
+      undefined,
+      undefined,
     );
   }
 
-  get isComplete(): boolean {
-    return !!this.completionDateTime;
+  static fromPOJO(
+    pojo:
+      | Omit<RecordedCardioExerciseSetPOJO, 'type'>
+      | RecordedCardioExerciseSet,
+  ): RecordedCardioExerciseSet {
+    return new RecordedCardioExerciseSet(
+      CardioExerciseSetBlueprint.fromPOJO(pojo.blueprint),
+      pojo.completionDateTime,
+      pojo.duration,
+      pojo.distance,
+      pojo.resistance,
+      pojo.incline,
+      pojo.weight,
+      pojo.steps,
+      pojo.currentBlockStartTime,
+    );
   }
 
-  get isStarted() {
-    return !!this.completionDateTime;
+  get isCompletelyFilled(): boolean {
+    return (
+      (this.blueprint.trackDuration || this.blueprint.target.type === 'time'
+        ? !!this.duration && !this.duration.equals(Duration.ZERO)
+        : true) &&
+      (this.blueprint.trackDistance || this.blueprint.target.type === 'distance'
+        ? !!this.distance
+        : true) &&
+      (this.blueprint.trackSteps ? this.steps !== undefined : true) &&
+      (this.blueprint.trackResistance ? !!this.resistance : true) &&
+      (this.blueprint.trackWeight ? !!this.weight : true) &&
+      (this.blueprint.trackIncline ? !!this.incline : true) &&
+      !this.currentBlockStartTime
+    );
   }
 
-  get latestTime(): LocalDateTime | undefined {
-    return this.completionDateTime;
+  toPOJO(): RecordedCardioExerciseSetPOJO {
+    return {
+      type: 'RecordedCardioExerciseSet',
+      blueprint: this.blueprint.toPOJO(),
+      completionDateTime: this.completionDateTime,
+      duration: this.duration,
+      distance: this.distance,
+      resistance: this.resistance,
+      incline: this.incline,
+      weight: this.weight,
+      steps: this.steps,
+      currentBlockStartTime: this.currentBlockStartTime,
+    };
   }
 
-  get earliestTime(): LocalDateTime | undefined {
-    return this.completionDateTime;
-  }
-
-  withNothingCompleted(): RecordedCardioExercise {
-    return this.with({
-      notes: undefined,
-      distance: undefined,
-      duration: undefined,
-      completionDateTime: undefined,
-      incline: undefined,
-      resistance: undefined,
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedCardioExerciseSetDao,
+  ): RecordedCardioExerciseSet {
+    return RecordedCardioExerciseSet.fromPOJO({
+      blueprint: CardioExerciseSetBlueprint.fromDao(dao.blueprint!).toPOJO(),
+      distance:
+        dao.distanceValue && dao.distanceUnit
+          ? {
+              value: fromDecimalDao(dao.distanceValue),
+              unit: dao.distanceUnit.value as DistanceUnit,
+            }
+          : undefined,
+      duration: fromDurationDao(dao.duration),
+      completionDateTime: fromDateTimeDao(dao.completionDateTime),
+      incline: fromDecimalDao(dao.incline),
+      resistance: fromDecimalDao(dao.resistance),
+      weight: dao.weight ? Weight.fromDao(dao.weight) : undefined,
+      steps: dao.steps?.value ?? undefined,
+      currentBlockStartTime: undefined,
     });
   }
 
-  equals(other: RecordedExercise | undefined): boolean {
-    if (!other) {
-      return false;
-    }
-    if (other === this) {
-      return true;
-    }
-    if (other instanceof RecordedWeightedExercise) {
-      return false;
-    }
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.IRecordedCardioExerciseSetDao {
+    return {
+      blueprint: this.blueprint.toDao(),
+      completionDateTime: toDateTimeDao(this.completionDateTime),
+      distanceUnit: toStringValue(this.distance?.unit),
+      distanceValue: this.distance ? toDecimalDao(this.distance.value) : null,
+      duration: toDurationDao(this.duration),
+      incline: this.incline ? toDecimalDao(this.incline) : null,
+      resistance: this.resistance ? toDecimalDao(this.resistance) : null,
+      weight: this.weight ? this.weight.toDao() : null,
+      steps: this.steps !== undefined ? { value: this.steps } : null,
+    };
+  }
+
+  with(other: Partial<RecordedCardioExerciseSet>): RecordedCardioExerciseSet {
+    return new RecordedCardioExerciseSet(
+      other.blueprint ?? this.blueprint,
+      other.completionDateTime ?? this.completionDateTime,
+      other.duration ?? this.duration,
+      other.distance ?? this.distance,
+      other.resistance ?? this.resistance,
+      other.incline ?? this.incline,
+      other.weight ?? this.weight,
+      other.steps ?? this.steps,
+      other.currentBlockStartTime ?? this.currentBlockStartTime,
+    );
+  }
+
+  equals(other: RecordedCardioExerciseSet): unknown {
     return (
-      this.blueprint.equals(other.blueprint) &&
       ((this.completionDateTime &&
         other.completionDateTime &&
         this.completionDateTime.equals(other.completionDateTime)) ||
@@ -512,40 +609,158 @@ export class RecordedCardioExercise {
         other.incline &&
         this.incline.isEqualTo(other.incline)) ||
         this.incline === other.incline) &&
+      weightEqual(this.weight, other.weight) &&
+      this.steps === other.steps
+    );
+  }
+}
+
+export interface RecordedCardioExercisePOJO {
+  type: 'RecordedCardioExercise';
+  blueprint: CardioExerciseBlueprintPOJO;
+  sets: RecordedCardioExerciseSetPOJO[];
+  notes: string | undefined;
+}
+export class RecordedCardioExercise {
+  constructor(
+    readonly blueprint: CardioExerciseBlueprint,
+    readonly sets: RecordedCardioExerciseSet[],
+    readonly notes: string | undefined,
+  ) {
+    if (!sets.length) {
+      throw new Error('Cardio exercise must have at least one set');
+    }
+  }
+
+  static fromPOJO(
+    pojo: Omit<RecordedCardioExercisePOJO, 'type'> | RecordedCardioExercise,
+  ): RecordedCardioExercise {
+    return new RecordedCardioExercise(
+      CardioExerciseBlueprint.fromPOJO(pojo.blueprint),
+      pojo.sets.map((x) => RecordedCardioExerciseSet.fromPOJO(x)),
+      pojo.notes,
+    );
+  }
+
+  static empty(blueprint: CardioExerciseBlueprint): RecordedCardioExercise {
+    return new RecordedCardioExercise(
+      blueprint,
+      blueprint.sets.map((x) => RecordedCardioExerciseSet.empty(x)),
+      undefined,
+    );
+  }
+
+  get currentSetIndex() {
+    return this.sets.findIndex((x) => !x.isCompletelyFilled);
+  }
+
+  get duration(): Duration | undefined {
+    return this.sets.reduce(
+      (accum, set) => accum.plus(set.duration ?? Duration.ZERO),
+      Duration.ZERO,
+    );
+  }
+
+  get isComplete(): boolean {
+    return this.sets.every((x) => x.isCompletelyFilled);
+  }
+
+  get isStarted() {
+    return this.sets.some((x) => !!x.completionDateTime);
+  }
+
+  get latestTime(): OffsetDateTime | undefined {
+    return this.sets
+      .map((x) => x.completionDateTime)
+      .filter((x) => x)
+      .sort(TemporalComparer)
+      .at(-1);
+  }
+
+  get earliestTime(): OffsetDateTime | undefined {
+    return this.sets
+      .map((x) => x.completionDateTime)
+      .filter((x) => x)
+      .sort(TemporalComparer)
+      .at(0);
+  }
+
+  withNothingCompleted(): RecordedCardioExercise {
+    return this.with({
+      notes: undefined,
+      sets: this.blueprint.sets.map((s) => RecordedCardioExerciseSet.empty(s)),
+    });
+  }
+
+  equals(other: RecordedExercise | undefined): boolean {
+    if (!other) {
+      return false;
+    }
+    if (other === this) {
+      return true;
+    }
+    if (other instanceof RecordedWeightedExercise) {
+      return false;
+    }
+    return (
+      this.blueprint.equals(other.blueprint) &&
+      this.sets.every((set, index) => set.equals(other.sets[index])) &&
       this.notes === other.notes
     );
   }
 
   with(
-    other: Partial<Omit<RecordedCardioExercisePOJO, 'type'>>,
+    other:
+      | Partial<RecordedCardioExercisePOJO>
+      | Partial<RecordedCardioExercise>,
   ): RecordedCardioExercise {
     return new RecordedCardioExercise(
       CardioExerciseBlueprint.fromPOJO(other.blueprint ?? this.blueprint),
-      other.completionDateTime ?? this.completionDateTime,
-      other.duration ?? this.duration,
-      other.distance ?? this.distance,
-      other.resistance ?? this.resistance,
-      other.incline ?? this.incline,
+      other.sets?.map((x) => RecordedCardioExerciseSet.fromPOJO(x)) ??
+        this.sets,
       other.notes ?? this.notes,
     );
   }
 
   toPOJO(): RecordedCardioExercisePOJO {
     return {
-      type: 'CardioRecordedExercise',
+      type: 'RecordedCardioExercise',
       blueprint: this.blueprint.toPOJO(),
-      completionDateTime: this.completionDateTime,
-      duration: this.duration,
-      distance: this.distance,
-      resistance: this.resistance,
-      incline: this.incline,
+      sets: this.sets.map((x) => x.toPOJO()),
       notes: this.notes,
     };
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.RecordedExerciseDaoV2 {
+    return new LiftLog.Ui.Models.SessionHistoryDao.RecordedExerciseDaoV2({
+      exerciseBlueprint: this.blueprint.toDao(),
+      notes: toStringValue(this.notes),
+      type: LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO,
+      cardioSets: this.sets.map((x) => x.toDao()),
+    });
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedExerciseDaoV2,
+  ): RecordedCardioExercise {
+    const sets = dao.cardioSets!.map((x) =>
+      RecordedCardioExerciseSet.fromDao(x).toPOJO(),
+    );
+    return RecordedCardioExercise.fromPOJO({
+      notes: dao.notes?.value ?? undefined,
+      blueprint: fromExerciseBlueprintDao(
+        dao.exerciseBlueprint,
+      ).toPOJO() as CardioExerciseBlueprintPOJO,
+      sets:
+        sets.length === 0
+          ? [getRecordedCardioSetFromDeprecatedFields(dao).toPOJO()]
+          : sets,
+    });
   }
 }
 
 export interface RecordedWeightedExercisePOJO {
-  type: 'WeightedRecordedExercise';
+  type: 'RecordedWeightedExercise';
   blueprint: WeightedExerciseBlueprintPOJO;
   potentialSets: PotentialSetPOJO[];
   notes: string | undefined;
@@ -649,11 +864,35 @@ export class RecordedWeightedExercise {
 
   toPOJO(): RecordedWeightedExercisePOJO {
     return {
-      type: 'WeightedRecordedExercise',
+      type: 'RecordedWeightedExercise',
       blueprint: this.blueprint.toPOJO(),
       potentialSets: this.potentialSets.map((x) => x.toPOJO()),
       notes: this.notes,
     };
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.RecordedExerciseDaoV2 {
+    return new LiftLog.Ui.Models.SessionHistoryDao.RecordedExerciseDaoV2({
+      exerciseBlueprint: this.blueprint.toDao(),
+      notes: toStringValue(this.notes),
+      type: LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.WEIGHTED,
+      potentialSets: this.potentialSets.map((x) => x.toDao()),
+    });
+  }
+
+  static fromDao(
+    sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
+    dao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedExerciseDaoV2,
+  ): RecordedWeightedExercise {
+    return RecordedWeightedExercise.fromPOJO({
+      notes: dao.notes?.value ?? undefined,
+      blueprint: fromExerciseBlueprintDao(
+        dao.exerciseBlueprint,
+      ).toPOJO() as WeightedExerciseBlueprintPOJO,
+      potentialSets: dao.potentialSets!.map((x) =>
+        PotentialSet.fromDao(sessionDate, x).toPOJO(),
+      ),
+    });
   }
 
   get maxWeight(): Weight {
@@ -667,6 +906,10 @@ export class RecordedWeightedExercise {
     );
   }
 
+  get currentSetIndex() {
+    return this.potentialSets.findIndex((x) => !x.set);
+  }
+
   get isStarted() {
     return !!this.firstRecordedSet;
   }
@@ -677,27 +920,24 @@ export class RecordedWeightedExercise {
       : undefined;
   }
 
-  get latestTime(): LocalDateTime | undefined {
+  get latestTime(): OffsetDateTime | undefined {
     return this.lastRecordedSet?.set?.completionDateTime;
   }
 
-  get earliestTime(): LocalDateTime | undefined {
+  get earliestTime(): OffsetDateTime | undefined {
     return this.firstRecordedSet?.set?.completionDateTime;
   }
 
   get lastRecordedSet(): PotentialSet | undefined {
     const result = Enumerable.from(this.potentialSets)
-      .orderByDescending(
-        (x) => x.set?.completionDateTime,
-        LocalDateTimeComparer,
-      )
+      .orderByDescending((x) => x.set?.completionDateTime, TemporalComparer)
       .firstOrDefault((x) => x.set !== undefined);
     return result;
   }
 
   get firstRecordedSet(): PotentialSet | undefined {
     const result = Enumerable.from(this.potentialSets)
-      .orderBy((x) => x.set?.completionDateTime, LocalDateTimeComparer)
+      .orderBy((x) => x.set?.completionDateTime, TemporalComparer)
       .firstOrDefault((x) => x.set !== undefined);
     return result;
   }
@@ -719,19 +959,19 @@ export class RecordedWeightedExercise {
 export interface RecordedSetPOJO {
   type: 'RecordedSet';
   repsCompleted: number;
-  completionDateTime: LocalDateTime;
+  completionDateTime: OffsetDateTime;
 }
 
 export class RecordedSet {
   readonly repsCompleted: number;
-  readonly completionDateTime: LocalDateTime;
+  readonly completionDateTime: OffsetDateTime;
 
   /**
    * @deprecated please use full constructor. Here only for serialization
    */
   constructor();
-  constructor(repsCompleted: number, completionDateTime: LocalDateTime);
-  constructor(repsCompleted?: number, completionDateTime?: LocalDateTime) {
+  constructor(repsCompleted: number, completionDateTime: OffsetDateTime);
+  constructor(repsCompleted?: number, completionDateTime?: OffsetDateTime) {
     this.repsCompleted = repsCompleted!;
     this.completionDateTime = completionDateTime!;
   }
@@ -768,6 +1008,41 @@ export class RecordedSet {
       repsCompleted: this.repsCompleted,
       completionDateTime: this.completionDateTime,
     };
+  }
+
+  static fromDao(
+    sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
+    recordedSetDao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedSetDaoV2,
+  ): RecordedSet {
+    const dateCompleted = recordedSetDao.completionDate ?? sessionDate;
+    const completionLocalDateTime = fromDateOnlyDao(dateCompleted).atTime(
+      fromTimeOnlyDao(recordedSetDao.completionTime),
+    );
+    const completionDateTime = completionLocalDateTime.atOffset(
+      recordedSetDao.completionOffset
+        ? ZoneOffset.ofTotalSeconds(
+            recordedSetDao.completionOffset.totalSeconds!,
+          )
+        : ZoneOffset.systemDefault()
+            .rules()
+            .offsetOfLocalDateTime(completionLocalDateTime),
+    );
+
+    return RecordedSet.fromPOJO({
+      completionDateTime,
+      repsCompleted: recordedSetDao.repsCompleted!,
+    });
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.RecordedSetDaoV2 {
+    return new LiftLog.Ui.Models.SessionHistoryDao.RecordedSetDaoV2({
+      repsCompleted: this.repsCompleted,
+      completionDate: toDateOnlyDao(this.completionDateTime.toLocalDate()),
+      completionTime: toTimeOnlyDao(this.completionDateTime.toLocalTime()),
+      completionOffset: {
+        totalSeconds: this.completionDateTime.offset().totalSeconds(),
+      },
+    });
   }
 }
 
@@ -822,9 +1097,38 @@ export class PotentialSet {
       weight: this.weight,
     };
   }
+
+  toDao(): LiftLog.Ui.Models.SessionHistoryDao.PotentialSetDaoV2 {
+    return new LiftLog.Ui.Models.SessionHistoryDao.PotentialSetDaoV2({
+      recordedSet: this.set?.toDao() ?? null,
+      weightValue: toDecimalDao(this.weight.value),
+      weightUnit: toWeightUnitDao(this.weight.unit),
+    });
+  }
+
+  static fromDao(
+    sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
+    dao:
+      | LiftLog.Ui.Models.SessionHistoryDao.IPotentialSetDaoV2
+      | null
+      | undefined,
+  ): PotentialSet {
+    if (!dao) {
+      throw new Error('PotentialSetDao cannot be null');
+    }
+    return PotentialSet.fromPOJO({
+      set: dao.recordedSet
+        ? RecordedSet.fromDao(sessionDate, dao.recordedSet).toPOJO()
+        : undefined,
+      weight: new Weight(
+        fromDecimalDao(dao.weightValue) ?? BigNumber(0),
+        fromWeightUnitDao(dao.weightUnit),
+      ),
+    });
+  }
 }
 
-function WeightEqual(a: Weight | undefined, b: Weight | undefined) {
+function weightEqual(a: Weight | undefined, b: Weight | undefined) {
   if (a === undefined || b === undefined) {
     return a === b;
   }
@@ -851,4 +1155,78 @@ function distanceEqual(a: Distance | undefined, b: Distance | undefined) {
       ([a, b]) => a.unit === b.unit && b.value.isEqualTo(b.value),
     )
     .otherwise(() => false);
+}
+
+export function toSessionHistoryDao(
+  model: Record<string, SessionPOJO>,
+): LiftLog.Ui.Models.SessionHistoryDao.SessionHistoryDaoV2 {
+  return new LiftLog.Ui.Models.SessionHistoryDao.SessionHistoryDaoV2({
+    completedSessions: Enumerable.from(model)
+      .select((x) => Session.fromPOJO(x.value))
+      .select((x) => x.toDao())
+      .toArray(),
+  });
+}
+
+export function fromSessionHistoryDao(
+  sessionHistoryModel: LiftLog.Ui.Models.SessionHistoryDao.SessionHistoryDaoV2,
+): Map<string, Session> {
+  return sessionHistoryModel.completedSessions.reduce((map, item) => {
+    map.set(fromUuidDao(item.id), Session.fromDao(item));
+    return map;
+  }, new Map<string, Session>());
+}
+
+export function fromRecordedExerciseDao(
+  sessionDate: LiftLog.Ui.Models.IDateOnlyDao,
+  dao:
+    | LiftLog.Ui.Models.SessionHistoryDao.IRecordedExerciseDaoV2
+    | null
+    | undefined,
+): RecordedExercise {
+  if (!dao) {
+    throw new Error('Recorded exercise DAO cannot be null');
+  }
+  if (dao.type === LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO) {
+    return RecordedCardioExercise.fromDao(dao);
+  }
+  return RecordedWeightedExercise.fromDao(sessionDate, dao);
+}
+
+function getRecordedCardioSetFromDeprecatedFields(
+  dao: LiftLog.Ui.Models.SessionHistoryDao.IRecordedExerciseDaoV2,
+): RecordedCardioExerciseSet {
+  return RecordedCardioExerciseSet.fromPOJO({
+    blueprint: getCardioBlueprintSetFromDeprecatedFields(
+      dao.exerciseBlueprint!,
+    ).toPOJO(),
+    distance:
+      dao.deprecatedDistanceValue && dao.deprecatedDistanceUnit
+        ? {
+            value: fromDecimalDao(dao.deprecatedDistanceValue),
+            unit: dao.deprecatedDistanceUnit.value as DistanceUnit,
+          }
+        : undefined,
+    duration: fromDurationDao(dao.deprecatedDuration),
+    completionDateTime: fromDateTimeDao(dao.deprecatedCompletionDateTime),
+    incline: fromDecimalDao(dao.deprecatedIncline),
+    resistance: fromDecimalDao(dao.deprecatedResistance),
+    weight: undefined,
+    steps: undefined,
+    currentBlockStartTime: undefined,
+  });
+}
+
+function getCardioBlueprintSetFromDeprecatedFields(
+  dao: LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2,
+): CardioExerciseSetBlueprint {
+  return CardioExerciseSetBlueprint.fromDao({
+    cardioTarget: dao.deprecatedCardioTarget ?? null,
+    trackDuration: dao.deprecatedTrackDuration ?? false,
+    trackDistance: dao.deprecatedTrackDistance ?? false,
+    trackResistance: dao.deprecatedTrackResistance ?? false,
+    trackIncline: dao.deprecatedTrackIncline ?? false,
+    trackWeight: false,
+    trackSteps: false,
+  });
 }

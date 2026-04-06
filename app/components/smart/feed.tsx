@@ -1,17 +1,17 @@
-import CardActions from '@/components/presentation/card-actionts';
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import EmptyInfo from '@/components/presentation/empty-info';
-import FullScreenDialog from '@/components/presentation/full-screen-dialog';
-import LabelledForm from '@/components/presentation/labelled-form';
-import LabelledFormRow from '@/components/presentation/labelled-form-row';
-import ListSwitch from '@/components/presentation/list-switch';
-import { Remote } from '@/components/presentation/remote';
-import SessionSummary from '@/components/presentation/session-summary';
-import SessionSummaryTitle from '@/components/presentation/session-summary-title';
-import SplitCardControl from '@/components/presentation/split-card-control';
-import { SurfaceText } from '@/components/presentation/surface-text';
+import CardActions from '@/components/presentation/foundation/card-actions';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
+import FullScreenDialog from '@/components/presentation/foundation/full-screen-dialog';
+import LabelledForm from '@/components/presentation/foundation/labelled-form';
+import LabelledFormRow from '@/components/presentation/foundation/labelled-form-row';
+import ListSwitch from '@/components/presentation/foundation/list-switch';
+import { Remote } from '@/components/presentation/foundation/remote';
+import SessionSummary from '@/components/presentation/summary/session-summary';
+import SessionSummaryTitle from '@/components/presentation/summary/session-summary-title';
+import SplitCardControl from '@/components/presentation/foundation/split-card-control';
+import { SurfaceText } from '@/components/presentation/foundation/surface-text';
 import { spacing } from '@/hooks/useAppTheme';
-import { useScroll } from '@/hooks/useScollListener';
+import { useScroll } from '@/hooks/useScrollListener';
 import { FeedIdentity, FeedItem, SessionFeedItem } from '@/models/feed-models';
 import { useAppSelector } from '@/store';
 import { shareString } from '@/store/app';
@@ -28,10 +28,10 @@ import { T, useTranslate } from '@tolgee/react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Card, Icon, List, TextInput } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import { FlashList } from '@shopify/flash-list';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import { LegendList } from '@legendapp/list';
 
 export default function Feed() {
   const feedItems = useAppSelector(selectFeedSessionItems);
@@ -39,7 +39,7 @@ export default function Feed() {
   const fetchingFeedItems = useAppSelector((x) => x.feed.isFetching);
   const dispatch = useDispatch();
   return (
-    <FlashList
+    <LegendList
       testID="feed-list"
       ListHeaderComponent={<FeedProfileHeader />}
       onRefresh={() => {
@@ -48,7 +48,7 @@ export default function Feed() {
       }}
       ListEmptyComponent={
         <EmptyInfo style={{ marginTop: spacing[8] }}>
-          <T keyName="NoFollowingData" />
+          <T keyName="feed.no_following_data.message" />
         </EmptyInfo>
       }
       refreshing={fetchingFeedItems}
@@ -56,9 +56,10 @@ export default function Feed() {
       data={feedItems}
       keyExtractor={(x) => x.eventId}
       renderItem={({ item }) => <FeedItemRenderer feedItem={item} />}
-      style={{ gap: spacing[2] }}
+      ItemSeparatorComponent={() => (
+        <View style={{ height: spacing[2] }}></View>
+      )}
       contentContainerStyle={{
-        gap: spacing[2],
         padding: spacing.pageHorizontalMargin,
       }}
     />
@@ -86,10 +87,10 @@ function FeedProfile({ identity }: { identity: FeedIdentity }) {
   const { t } = useTranslate();
   return (
     <>
-      <Card mode="contained">
+      <Card mode="contained" style={{ marginBottom: spacing[2] }}>
         <Card.Title
           left={({ size }) => <Icon source={'personFill'} size={size} />}
-          title={t('Profile')}
+          title={t('feed.profile.title')}
           titleVariant="headlineSmall"
         />
         <Card.Content>
@@ -100,7 +101,7 @@ function FeedProfile({ identity }: { identity: FeedIdentity }) {
             dataSet={{ shareUrl }}
           />
           <SurfaceText>
-            <T keyName="FeedExplanation" />
+            <T keyName="feed.explanation.body" />
           </SurfaceText>
 
           {identity.publishWorkouts ? undefined : (
@@ -113,7 +114,7 @@ function FeedProfile({ identity }: { identity: FeedIdentity }) {
               }}
             >
               <SurfaceText color="error">
-                <T keyName="NotPublishingWorkoutsError" />
+                <T keyName="feed.not_publishing_workouts.error" />
               </SurfaceText>
               <Button
                 style={{ marginLeft: 'auto' }}
@@ -124,7 +125,7 @@ function FeedProfile({ identity }: { identity: FeedIdentity }) {
                 }}
                 mode="outlined"
               >
-                <T keyName="Fix" />
+                <T keyName="generic.fix.button" />
               </Button>
             </View>
           )}
@@ -152,7 +153,7 @@ function FeedProfile({ identity }: { identity: FeedIdentity }) {
               );
             }}
           >
-            <T keyName={'Share'} />
+            <T keyName="generic.share.button" />
           </Button>
         </CardActions>
       </Card>
@@ -187,7 +188,12 @@ function FeedProfileEditor({
   };
   const [resetAccountDialogOpen, setResetAccountDialogOpen] = useState(false);
   return (
-    <FullScreenDialog open={open} onClose={onClose} title={t('Manage Feed')}>
+    <FullScreenDialog
+      avoidKeyboard
+      open={open}
+      onClose={onClose}
+      title={t('feed.manage.title')}
+    >
       <View
         style={{
           gap: spacing[2],
@@ -195,11 +201,14 @@ function FeedProfileEditor({
         }}
       >
         <LabelledForm>
-          <LabelledFormRow icon={'personFill'} label={t('YourName')}>
+          <LabelledFormRow
+            icon={'personFill'}
+            label={t('feed.your_name.label')}
+          >
             <TextInput
-              placeholder={t('Optional')}
+              placeholder={t('generic.optional.label')}
               value={identity.name ?? ''}
-              label={t('Optional')}
+              label={t('generic.optional.label')}
               mode="outlined"
               onChangeText={(name) => updateProfile({ name })}
             />
@@ -209,38 +218,38 @@ function FeedProfileEditor({
           <ListSwitch
             testID="feed-publish-workouts-switch"
             focus={focusPublish}
-            headline={t('PublishWorkout')}
-            supportingText={t('PublishWorkoutSubtitle')}
+            headline={t('feed.publish_workout.label')}
+            supportingText={t('feed.publish_workout.subtitle')}
             value={identity.publishWorkouts}
             onValueChange={(publishWorkouts) =>
               updateProfile({ publishWorkouts })
             }
           />
           <ListSwitch
-            headline={t('PublishBodyweight')}
-            supportingText={t('PublishBodyweightSubtitle')}
+            headline={t('feed.publish_bodyweight.label')}
+            supportingText={t('feed.publish_bodyweight.subtitle')}
             value={identity.publishBodyweight}
             onValueChange={(publishBodyweight) =>
               updateProfile({ publishBodyweight })
             }
           />
           <ListSwitch
-            headline={t('PublishPlan')}
-            supportingText={t('PublishPlanSubtitle')}
+            headline={t('feed.publish_plan.label')}
+            supportingText={t('feed.publish_plan.subtitle')}
             value={identity.publishPlan}
             onValueChange={(publishPlan) => updateProfile({ publishPlan })}
           />
         </List.Section>
         <Button onPress={() => setResetAccountDialogOpen(true)}>
-          {t('ResetAccount')}
+          {t('feed.reset_account.button')}
         </Button>
       </View>
       <ConfirmationDialog
-        headline={t('ResetAccount')}
-        textContent={t('ResetAccountMessage')}
+        headline={t('feed.reset_account.button')}
+        textContent={t('feed.reset_account.confirm.body')}
         open={resetAccountDialogOpen}
         onOk={resetAccount}
-        okText={t('ResetAccount')}
+        okText={t('feed.reset_account.button')}
         onCancel={() => setResetAccountDialogOpen(false)}
       />
     </FullScreenDialog>

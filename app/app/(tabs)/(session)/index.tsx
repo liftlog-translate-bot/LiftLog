@@ -1,14 +1,13 @@
-import CardActions from '@/components/presentation/card-actionts';
-import CardList from '@/components/presentation/card-list';
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import FloatingBottomContainer from '@/components/presentation/floating-bottom-container';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import { Remote } from '@/components/presentation/remote';
-import SessionSummary from '@/components/presentation/session-summary';
-import SessionSummaryTitle from '@/components/presentation/session-summary-title';
-import SplitCardControl from '@/components/presentation/split-card-control';
-import AndroidNotificationAlert from '@/components/smart/android-notification-alert';
+import CardActions from '@/components/presentation/foundation/card-actions';
+import CardList from '@/components/presentation/foundation/card-list';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import FloatingBottomContainer from '@/components/presentation/foundation/floating-bottom-container';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import { Remote } from '@/components/presentation/foundation/remote';
+import SessionSummary from '@/components/presentation/summary/session-summary';
+import SessionSummaryTitle from '@/components/presentation/summary/session-summary-title';
+import SplitCardControl from '@/components/presentation/foundation/split-card-control';
 import { spacing } from '@/hooks/useAppTheme';
 import { Session } from '@/models/session-models';
 import { RootState, useAppSelector, useAppSelectorWithArg } from '@/store';
@@ -16,7 +15,7 @@ import {
   selectCurrentSession,
   setCurrentSession,
 } from '@/store/current-session';
-import { publishUnpublishedSessions } from '@/store/feed';
+import { encryptAndShare, publishUnpublishedSessions } from '@/store/feed';
 import { fetchUpcomingSessions, selectActiveProgram } from '@/store/program';
 import { setEditingSession } from '@/store/session-editor';
 import { executeRemoteBackup } from '@/store/settings';
@@ -26,10 +25,13 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Card, FAB, Text, Tooltip } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
-import { useDebouncedCallback } from 'use-debounce';
 import { MigrateToWeightUnitsWizard } from '@/components/smart/migrate-to-weight-units';
+import { WelcomeWizard } from '@/components/smart/welcome-wizard';
+import { SessionDiffSaveDialog } from '@/components/smart/session-diff-save-dialog';
+import { SharedSession } from '@/models/feed-models';
+import { CurrentWorkoutReplacer } from '@/components/smart/current-workout-replacer';
 
 function PlanManager() {
   const { push } = useRouter();
@@ -46,7 +48,7 @@ function PlanManager() {
         icon={'assignment'}
         onPress={() => push(`/settings/program-list`, { withAnchor: true })}
       >
-        <T keyName="Choose plan" />
+        <T keyName="plan.choose.button" />
       </Button>
       <Button
         mode="contained-tonal"
@@ -58,7 +60,7 @@ function PlanManager() {
           })
         }
       >
-        <T keyName="Edit workouts" />
+        <T keyName="workout.edit_workouts.button" />
       </Button>
     </View>
   );
@@ -88,20 +90,37 @@ function ListUpcomingWorkouts({
     );
     dispatch(fetchUpcomingSessions());
   };
+  const handleSharePress = (session: Session) => {
+    dispatch(
+      encryptAndShare({
+        item: new SharedSession(session),
+        title: t('workout.shared_item.title'),
+      }),
+    );
+  };
   return (
     <View style={{ flex: 1, gap: spacing[2], paddingTop: spacing[4] }}>
+      <SessionDiffSaveDialog />
+      <WelcomeWizard />
       <PlanManager />
       {currentSession && (
         <>
           <Text style={{ marginTop: spacing[2] }} variant="titleSmall">
-            {t('Current workout')}
+            {t('workout.current.title')}
           </Text>
           <Card mode="contained">
             <Card.Content>
               <SessionCardContent session={currentSession} />
             </Card.Content>
             <CardActions style={{ marginTop: spacing[2] }}>
-              <Tooltip title={t('Clear current workout')}>
+              <Tooltip title={t('workout.share_workout.button')}>
+                <IconButton
+                  icon={'share'}
+                  mode="contained"
+                  onPress={() => handleSharePress(currentSession)}
+                />
+              </Tooltip>
+              <Tooltip title={t('workout.clear_current.button')}>
                 <IconButton
                   testID="clear-current-workout"
                   icon={'delete'}
@@ -115,7 +134,7 @@ function ListUpcomingWorkouts({
                 testID="resume-workout-button"
                 onPress={() => selectSession(currentSession)}
               >
-                <T keyName={'Resume workout'} />
+                <T keyName="workout.resume.button" />
               </Button>
             </CardActions>
           </Card>
@@ -123,7 +142,7 @@ function ListUpcomingWorkouts({
       )}
       {!!upcoming.length && (
         <Text style={{ marginTop: spacing[2] }} variant="titleSmall">
-          {t('UpcomingWorkouts')}
+          {t('workout.upcoming.title')}
         </Text>
       )}
       <CardList
@@ -149,6 +168,11 @@ function ListUpcomingWorkouts({
           };
           return (
             <CardActions style={{ marginTop: spacing[2] }}>
+              <IconButton
+                icon={'share'}
+                mode="contained"
+                onPress={() => handleSharePress(session)}
+              />
               {sessionPlanIndex !== -1 ? (
                 <IconButton
                   icon={'edit'}
@@ -163,9 +187,9 @@ function ListUpcomingWorkouts({
                 onPress={() => selectSession(session)}
               >
                 {session.isStarted ? (
-                  <T keyName={'Resume workout'} />
+                  <T keyName="workout.resume.button" />
                 ) : (
-                  <T keyName={'Start workout'} />
+                  <T keyName="workout.start.button" />
                 )}
               </Button>
             </CardActions>
@@ -173,11 +197,9 @@ function ListUpcomingWorkouts({
         }}
       />
       <ConfirmationDialog
-        headline={t('Clear current workout?')}
-        textContent={t(
-          'This will clear the current workout without saving it to your history',
-        )}
-        okText={t('Clear')}
+        headline={t('workout.clear_current.confirm.title')}
+        textContent={t('workout.clear_current.confirm.body')}
+        okText={t('generic.clear.button')}
         onOk={() => {
           clearCurrentSession();
           setConfirmDeleteSessionOpen(false);
@@ -204,42 +226,13 @@ function SessionCardContent({ session }: { session: Session }) {
 
 export default function Index() {
   const upcomingSessions = useAppSelector((s) => s.program.upcomingSessions);
-  // const program = useAppSelector(selectActiveProgram);
   const dispatch = useDispatch();
   const { t } = useTranslate();
-  const { push } = useRouter();
-  const currentSession = useAppSelectorWithArg(
-    selectCurrentSession,
-    'workoutSession',
-  );
   const currentBodyweight = upcomingSessions
     .map((x) => x.at(0)?.bodyweight)
     .unwrapOr(undefined);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  // const rootNavigationState = useRootNavigationState();
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  // const navigatorReady = rootNavigationState?.key != null;
-  // const [hasRedirected, setHasRedirected] = useState(false);
-  // const [hasMounted, setHasMounted] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<Session | undefined>();
 
-  // useMountEffect(() => {
-  //   setHasMounted(true);
-  // });
-  // useEffect(() => {
-  //   if (!navigatorReady || !hasMounted) return;
-  //   // On app open from cold if we have a current session loaded, show it automatically.
-  //   if (currentSession?.isStarted && !hasRedirected) {
-  //     push('/(tabs)/(session)/session');
-  //   }
-  //   setHasRedirected(true);
-  // }, [
-  //   navigatorReady,
-  //   hasRedirected,
-  //   currentSession?.isStarted,
-  //   push,
-  //   hasMounted,
-  // ]);
+  const [selectedSession, setSelectedSession] = useState<Session | undefined>();
 
   useFocusEffect(() => {
     dispatch(fetchUpcomingSessions());
@@ -247,38 +240,12 @@ export default function Index() {
     dispatch(executeRemoteBackup({}));
   });
 
-  const selectSession = (session: Session) => {
-    if (!currentSession || currentSession.equals(session)) {
-      replaceSession(session);
-    } else {
-      setSelectedSession(session);
-    }
-  };
-  const replaceSession = useDebouncedCallback(
-    (session: Session) => {
-      setSelectedSession(undefined);
-      dispatch(
-        setCurrentSession({
-          target: 'workoutSession',
-          session,
-        }),
-      );
-      push('/session');
-    },
-    500,
-    { leading: true, trailing: false },
-  );
-  const replaceSessionDialogAction = () => {
-    if (!selectedSession) return;
-    replaceSession(selectedSession);
-  };
-
   const createFreeformSession = () => {
     const newSession = Session.freeformSession(
       LocalDate.now(),
       currentBodyweight,
     );
-    selectSession(newSession);
+    setSelectedSession(newSession);
   };
 
   const floatingBottomContainer = (
@@ -288,7 +255,7 @@ export default function Index() {
           variant="surface"
           size="small"
           icon="fitnessCenter"
-          label={t('Freeform Workout')}
+          label={t('workout.freeform.title')}
           onPress={createFreeformSession}
         />
       }
@@ -305,28 +272,21 @@ export default function Index() {
           title: 'LiftLog',
         }}
       />
-      <AndroidNotificationAlert />
       <MigrateToWeightUnitsWizard />
       <Remote
         value={upcomingSessions}
         success={(upcoming) => {
           return (
             <ListUpcomingWorkouts
-              selectSession={selectSession}
+              selectSession={setSelectedSession}
               upcoming={upcoming.map((x) => Session.fromPOJO(x))}
             />
           );
         }}
       />
-      <ConfirmationDialog
-        open={!!selectedSession}
-        onCancel={() => setSelectedSession(undefined)}
-        okText="Replace"
-        onOk={replaceSessionDialogAction}
-        headline={<T keyName="Replace current workout?" />}
-        textContent={
-          <T keyName="There is already a workout in progress, replace it without saving?" />
-        }
+      <CurrentWorkoutReplacer
+        session={selectedSession}
+        clearSession={() => setSelectedSession(undefined)}
       />
     </FullHeightScrollView>
   );

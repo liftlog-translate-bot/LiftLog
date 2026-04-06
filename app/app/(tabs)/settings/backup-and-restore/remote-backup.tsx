@@ -1,9 +1,9 @@
-import EmptyInfo from '@/components/presentation/empty-info';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import LabelledForm from '@/components/presentation/labelled-form';
-import LabelledFormRow from '@/components/presentation/labelled-form-row';
-import LimitedHtml from '@/components/presentation/limited-html';
-import ListSwitch from '@/components/presentation/list-switch';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import LabelledForm from '@/components/presentation/foundation/labelled-form';
+import LabelledFormRow from '@/components/presentation/foundation/labelled-form-row';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
+import ListSwitch from '@/components/presentation/foundation/list-switch';
 import { spacing } from '@/hooks/useAppTheme';
 import { useAppSelector } from '@/store';
 import { showSnackbar } from '@/store/app';
@@ -13,7 +13,7 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { Card, HelperText, TextInput } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
 
 export default function RemoteBackupPage() {
@@ -53,7 +53,7 @@ export default function RemoteBackupPage() {
     );
     dispatch(
       showSnackbar({
-        text: t('SettingsSaved'),
+        text: t('settings.saved.message'),
         duration: 2000,
       }),
     );
@@ -73,8 +73,8 @@ export default function RemoteBackupPage() {
   };
 
   return (
-    <FullHeightScrollView>
-      <Stack.Screen options={{ title: t('AutomaticRemoteBackup') }} />
+    <FullHeightScrollView avoidKeyboard>
+      <Stack.Screen options={{ title: t('backup.automatic_remote.title') }} />
       <Card
         mode="contained"
         style={{ marginHorizontal: spacing[6], marginBottom: spacing[4] }}
@@ -83,7 +83,7 @@ export default function RemoteBackupPage() {
           <EmptyInfo>
             <LimitedHtml
               style={{ textAlign: 'center' }}
-              value={t('RemoteBackupDescription')}
+              value={t('backup.remote.explanation')}
             />
           </EmptyInfo>
 
@@ -94,12 +94,12 @@ export default function RemoteBackupPage() {
               )
             }
           >
-            <T keyName="ReadDocumentation" />
+            <T keyName="generic.read_documentation.button" />
           </Button>
         </Card.Content>
       </Card>
       <LabelledForm>
-        <LabelledFormRow label={t('Endpoint')} icon={'publicFill'}>
+        <LabelledFormRow label={t('backup.endpoint.label')} icon={'publicFill'}>
           <TextInput
             mode="outlined"
             placeholder="https://example.com/backup"
@@ -110,7 +110,7 @@ export default function RemoteBackupPage() {
           />
           <HelperText type="error">{endpointError}</HelperText>
         </LabelledFormRow>
-        <LabelledFormRow label={t('ApiKey')} icon={'vpnKeyFill'}>
+        <LabelledFormRow label={t('backup.api_key.label')} icon={'vpnKeyFill'}>
           <TextInput
             mode="outlined"
             value={apiKeyValue}
@@ -120,8 +120,8 @@ export default function RemoteBackupPage() {
           <HelperText type="error">{endpointError}</HelperText>
         </LabelledFormRow>
         <ListSwitch
-          headline={t('BackupFeedAccount')}
-          supportingText={t('BackupFeedAccountSubtitle')}
+          headline={t('feed.backup_account.title')}
+          supportingText={t('feed.backup_account.subtitle')}
           value={includeFeedAccountValue}
           onValueChange={setIncludeFeedAccount}
         />
@@ -135,10 +135,10 @@ export default function RemoteBackupPage() {
         }}
       >
         <Button disabled={!!endpointError} onPress={test}>
-          <T keyName="Test" />
+          <T keyName="generic.test.button" />
         </Button>
         <Button disabled={!!endpointError} onPress={save}>
-          <T keyName="Save" />
+          <T keyName="generic.save.button" />
         </Button>
       </View>
     </FullHeightScrollView>

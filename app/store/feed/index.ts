@@ -156,11 +156,7 @@ const feedSlice = createSlice({
     ),
     selectFeedFollowers: createSelector(
       (state: FeedState) => state.followers,
-      (x) =>
-        Object.entries(x).map(([userId, user]) => ({
-          userId,
-          user: FeedUser.fromPOJO(user),
-        })),
+      (x) => Object.values(x).map((user) => FeedUser.fromPOJO(user)),
     ),
     selectFeedFollowing: createSelector(
       (state: FeedState) => state.followedUsers,
@@ -239,7 +235,10 @@ export const fetchFeedItems = createAction<FeedAction>('fetchFeedItems');
 
 export const fetchInboxItems = createAction<FeedAction>('fetchInboxItems');
 
-export const encryptAndShare = createAction<SharedItem>('encryptAndShare');
+export const encryptAndShare = createAction<{
+  item: SharedItem;
+  title: string;
+}>('encryptAndShare');
 
 export const fetchSharedItem = createAction<{ id: string; key: AesKey }>(
   'fetchSharedItem',
@@ -297,5 +296,7 @@ export const resetFeedAccount = createAction<
 export const updateFeedIdentity = createAction<
   { updates: Partial<FeedIdentity> } & FeedAction
 >('updateFeedIdentity');
+
+export * from './conversions';
 
 export default feedSlice.reducer;

@@ -1,3 +1,4 @@
+import { applySessionBlueprintDiff, PlanDiff } from '@/models/blueprint-diff';
 import {
   ProgramBlueprint,
   ProgramBlueprintPOJO,
@@ -5,7 +6,8 @@ import {
   SessionBlueprintPOJO,
 } from '@/models/blueprint-models';
 import { RemoteData } from '@/models/remote';
-import { Session, SessionPOJO } from '@/models/session-models';
+import { EmptySession, Session, SessionPOJO } from '@/models/session-models';
+import { SafeDraft } from '@/utils/store-helpers';
 
 import { LocalDate } from '@js-joda/core';
 import {
@@ -61,6 +63,28 @@ const programSlice = createSlice({
           ...state.savedPrograms[action.payload.programId],
           sessions: action.payload.sessionBlueprints.map((x) => x.toPOJO()),
         };
+      }
+    },
+
+    applyDiffToPlan(state, action: PayloadAction<PlanDiff>) {
+      if (action.payload.type === 'add') {
+        state.savedPrograms[state.activeProgramId].sessions.push(
+          applySessionBlueprintDiff(
+            EmptySession.blueprint,
+            action.payload.diff,
+          ).toPOJO(),
+        );
+      } else if (action.payload.type === 'diff') {
+        state.savedPrograms[state.activeProgramId].sessions[
+          action.payload.sessionIndex
+        ] = applySessionBlueprintDiff(
+          SessionBlueprint.fromPOJO(
+            state.savedPrograms[state.activeProgramId].sessions[
+              action.payload.sessionIndex
+            ] as SafeDraft<SessionBlueprintPOJO>,
+          ),
+          action.payload.diff,
+        ).toPOJO();
       }
     },
 
@@ -192,12 +216,14 @@ const programSlice = createSlice({
     ) {
       const program = state.savedPrograms[action.payload.programId];
       if (program) {
-        program.sessions = program.sessions.filter(
-          (session) =>
-            !action.payload.sessionBlueprint.equals(
-              session as SessionBlueprintPOJO,
-            ),
+        const index = program.sessions.findIndex((session) =>
+          action.payload.sessionBlueprint.equals(
+            session as SessionBlueprintPOJO,
+          ),
         );
+        if (index >= 0) {
+          program.sessions.splice(index, 1);
+        }
       }
     },
 
@@ -249,12 +275,33 @@ const programSlice = createSlice({
       [(state: ProgramState) => state.savedPrograms, (_, id: string) => id],
       (programs, id) => ProgramBlueprint.fromPOJO(programs[id]),
     ),
+    /**
+     * Finds a unique name for a new workout in the current active plan.
+     * Will be Workout {Number} where number is the first non conflicting number after sessions.length
+     */
+    selectNewWorkoutName: createSelector(
+      (state: ProgramState) =>
+        state.savedPrograms[state.activeProgramId]?.sessions || [],
+      (sessions) => {
+        const existingNames = sessions.map((session) => session.name);
+        let counter = sessions.length + 1;
+        let proposedName = `Workout ${counter}`;
+
+        while (existingNames.includes(proposedName)) {
+          counter++;
+          proposedName = `Workout ${counter}`;
+        }
+
+        return proposedName;
+      },
+    ),
   },
 });
 
 export const {
   setIsHydrated,
   setUpcomingSessions,
+  applyDiffToPlan,
   addProgramSession,
   createSavedPlan,
   deleteSavedPlan,
@@ -270,8 +317,12 @@ export const {
   setSavedPlans,
 } = programSlice.actions;
 
-export const { selectActiveProgram, selectProgram, selectAllPrograms } =
-  programSlice.selectors;
+export const {
+  selectActiveProgram,
+  selectProgram,
+  selectAllPrograms,
+  selectNewWorkoutName,
+} = programSlice.selectors;
 
 export const fetchUpcomingSessions = createAction('fetchUpcomingSessions');
 export const initializeProgramStateSlice = createAction(

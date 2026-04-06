@@ -1,14 +1,10 @@
 namespace LiftLog.Api.Service;
 
-extern alias OpenAICommunity;
 using System.Collections.Generic;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
-using OpenAICommunity::OpenAI;
-using Google.Apis.AndroidPublisher.v3;
-using Google.Apis.Auth.OAuth2;
-using LiftLog.Lib.Services;
+using Anthropic;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
@@ -16,76 +12,32 @@ using RevenueCat.Client;
 
 public static class RegistrationHelpers
 {
-    public static IServiceCollection AddGptAiWorkoutPlanner(this IServiceCollection source)
+    /// <summary>
+    /// Registers the AI Workout Planner using Microsoft.Extensions.AI abstractions
+    /// backed by Anthropic's Claude model. This is provider-agnostic and can be
+    /// easily swapped to use other AI providers.
+    /// </summary>
+    public static IServiceCollection AddAnthropicWorkoutPlanner(this IServiceCollection source)
     {
-        source.AddSingleton(services =>
+        // Register the Anthropic client as IChatClient
+        source.AddSingleton<IChatClient>(services =>
         {
             var configuration = services.GetRequiredService<IConfiguration>();
             var apiKey =
-                configuration.GetValue<string?>("OpenAiApiKey")
-                ?? throw new Exception("OpenAiApiKey configuration is not set.");
-            var openAiClient = new OpenAIClient(apiKey, OpenAISettings.Default, new HttpClient());
-            return openAiClient;
+                configuration.GetValue<string?>("AnthropicApiKey")
+                ?? throw new Exception("AnthropicApiKey configuration is not set.");
+
+            var anthropicClient = new AnthropicClient { ApiKey = apiKey };
+
+            // Use claude-sonnet-4-6 as a good balance of capability and cost
+            // Can be configured via configuration if needed
+            var modelId =
+                configuration.GetValue<string?>("AnthropicModelId") ?? "claude-sonnet-4-6";
+
+            return anthropicClient.AsIChatClient(modelId);
         });
 
-        source.AddSingleton<IAiWorkoutPlanner, GptAiWorkoutPlanner>();
-
-        source.AddSingleton(services =>
-        {
-            var configuration = services.GetRequiredService<IConfiguration>();
-            var apiKey =
-                configuration.GetValue<string?>("OpenAiApiKey")
-                ?? throw new Exception("OpenAiApiKey configuration is not set.");
-            return new OpenAI.Chat.ChatClient("gpt-4.1", apiKey);
-        });
-        source.AddSingleton<GptChatWorkoutPlanner>();
-        return source;
-    }
-
-    public static IServiceCollection AddApplePurchaseVerification(this IServiceCollection source)
-    {
-        source.AddHttpClient<AppleAppStorePurchaseVerificationService>();
-        return source;
-    }
-
-    public static IServiceCollection AddGooglePurchaseVerification(this IServiceCollection source)
-    {
-        source.AddSingleton(
-            (service) =>
-            {
-                var configuration = service.GetRequiredService<IConfiguration>();
-                var certificateBase64 =
-                    configuration.GetValue<string>("GooglePlayServiceAccountKeyBase64")
-                    ?? throw new Exception(
-                        "GooglePlayServiceAccountKeyBase64 configuration is not set."
-                    );
-                var serviceAccountEmail =
-                    configuration.GetValue<string>("GooglePlayServiceAccountEmail")
-                    ?? throw new Exception(
-                        "GooglePlayServiceAccountEmail configuration is not set."
-                    );
-                var certificateBytes = Convert.FromBase64String(certificateBase64);
-                var certificate = X509CertificateLoader.LoadPkcs12(
-                    certificateBytes,
-                    "notasecret",
-                    X509KeyStorageFlags.Exportable
-                );
-                ServiceAccountCredential credential = new(
-                    new ServiceAccountCredential.Initializer(serviceAccountEmail)
-                    {
-                        Scopes = [AndroidPublisherService.Scope.Androidpublisher],
-                    }.FromCertificate(certificate)
-                );
-                return new AndroidPublisherService(
-                    new AndroidPublisherService.Initializer
-                    {
-                        ApplicationName = "LiftLog",
-                        HttpClientInitializer = credential,
-                    }
-                );
-            }
-        );
-        source.AddSingleton<GooglePlayPurchaseVerificationService>();
+        source.AddSingleton<IAiChatWorkoutPlanner, GenericAiChatWorkoutPlanner>();
         return source;
     }
 
@@ -93,7 +45,7 @@ public static class RegistrationHelpers
         this IServiceCollection source
     )
     {
-        source.AddSingleton<RevenueCatPurchaseVerificationService>(services =>
+        source.AddSingleton<IRevenueCatPurchaseVerificationService>(services =>
         {
             var configuration = services.GetRequiredService<IConfiguration>();
             var accessTokenProvider = new AccessTokenProvider(

@@ -26,20 +26,13 @@ jobs:
           --health-retries 5
         ports:
           # Maps tcp port 5432 on service container to the host
-          - 5432:5432
-    env:
-      ConnectionStrings__UserDataContext: Host=localhost;Port=5432;Database=liftlog;Username=postgres;Password=password
-      ConnectionStrings__RateLimitContext: Host=localhost;Port=5432;Database=liftlog;Username=postgres;Password=password
-      OpenAiApiKey: "sk-123"
-      WebAuthApiKey: "1234"
-      GooglePlayServiceAccountEmail: "123"
-      GooglePlayServiceAccountKeyBase64: "123"
+          - 5401:5432
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
       - name: Restore dependencies
         run: dotnet restore
         working-directory: ./tests/LiftLog.Tests.Api
@@ -47,5 +40,7 @@ jobs:
         run: dotnet build
         working-directory: ./tests/LiftLog.Tests.Api
       - name: Test
-        run: dotnet test --no-restore --verbosity normal
+        run: dotnet run --no-restore --verbosity normal
         working-directory: ./tests/LiftLog.Tests.Api
+        env:
+          AnthropicApiKey: ${{ secrets.ANTHROPIC_API_KEY }}

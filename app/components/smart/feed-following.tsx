@@ -1,6 +1,6 @@
-import EmptyInfo from '@/components/presentation/empty-info';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
 import { spacing } from '@/hooks/useAppTheme';
-import { useScroll } from '@/hooks/useScollListener';
+import { useScroll } from '@/hooks/useScrollListener';
 import { FeedUser } from '@/models/feed-models';
 import { useAppSelector } from '@/store';
 import {
@@ -12,8 +12,8 @@ import { T, useTranslate } from '@tolgee/react';
 import React, { useState } from 'react';
 import { List, Menu } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import { FlashList } from '@shopify/flash-list';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import { LegendList } from '@legendapp/list';
 
 export function FeedFollowing() {
   const following = useAppSelector(selectFeedFollowing);
@@ -21,14 +21,14 @@ export function FeedFollowing() {
   const fetchingFeedItems = useAppSelector((x) => x.feed.isFetching);
   const dispatch = useDispatch();
   return (
-    <FlashList
+    <LegendList
       style={{ flex: 1 }}
       onRefresh={() => {
         dispatch(fetchInboxItems({ fromUserAction: true }));
       }}
       ListEmptyComponent={
         <EmptyInfo style={{ marginTop: spacing[8] }}>
-          <T keyName="NotFollowingAnyone" />
+          <T keyName="feed.not_following_anyone.message" />
         </EmptyInfo>
       }
       refreshing={fetchingFeedItems}
@@ -52,7 +52,9 @@ function FeedFollowingItem(props: { user: FeedUser; userId: string }) {
   return (
     <List.Item
       title={props.user.name || 'Anonymous user'}
-      description={props.user.aesKey ? undefined : t('AwaitingResponse')}
+      description={
+        props.user.aesKey ? undefined : t('generic.awaiting_response.label')
+      }
       right={() => (
         <Menu
           visible={menuVisible}
@@ -71,7 +73,7 @@ function FeedFollowingItem(props: { user: FeedUser; userId: string }) {
               setMenuVisible(false);
             }}
             leadingIcon={'personRemove'}
-            title={t('Unfollow')}
+            title={t('feed.unfollow.button')}
           />
         </Menu>
       )}

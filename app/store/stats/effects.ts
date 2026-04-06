@@ -1,16 +1,17 @@
 import { NormalizedName } from '@/models/blueprint-models';
 import {
-  ExerciseStatistics,
+  WeightedExerciseStatistics,
   GranularStatisticView,
   HeaviestLift,
   OptionalStatisticOverTime,
-  StatisticOverTime,
-  TimeSpentExercise,
+  WeightedStatisticOverTime,
   TimeTrackedStatistic,
+  setOverallViewTime,
+  setStatsIsDirty,
+  RepsBreakdownStatistics,
 } from './index';
-import { Duration, LocalDate, LocalDateTime } from '@js-joda/core';
-import BigNumber from 'bignumber.js';
-import { fetchOverallStats, setOverallStats, setStatsIsLoading } from './index';
+import { Duration, OffsetDateTime, ZoneId } from '@js-joda/core';
+import { fetchOverallStats, setOverallStats } from './index';
 import { addEffect } from '@/store/store';
 import { selectSessionsBy } from '@/store/stored-sessions';
 import {
@@ -19,21 +20,28 @@ import {
   Session,
 } from '@/models/session-models';
 import Enumerable from 'linq';
-import { Weight } from '@/models/weight';
+import { Weight, WeightUnit } from '@/models/weight';
+import { sleep } from '@/utils/sleep';
+import { RemoteData } from '@/models/remote';
+import BigNumber from 'bignumber.js';
+import { selectPreferredWeightUnit } from '../settings';
 
-function computeStats(sessions: Session[]): GranularStatisticView | undefined {
+function computeStats(
+  sessions: Session[],
+  preferredUnit: WeightUnit,
+): GranularStatisticView {
   if (!sessions.length)
     return {
       averageSessionLength: Duration.ZERO,
       maxWeightLiftedInAWorkout: undefined,
       bodyweightStats: {
         statistics: [],
-        title: 'Bodyweight',
+        currentValue: Weight.NIL,
+        totalValue: Weight.NIL,
         minValue: Weight.NIL,
         maxValue: Weight.NIL,
       },
-      exerciseMostTimeSpent: undefined,
-      exerciseStats: [],
+      weightedExerciseStats: [],
       heaviestLift: undefined,
       sessionStats: [],
     };
@@ -50,22 +58,16 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
   const bodyWeightStatistics = Enumerable.from(sessions)
     .where((s) => !!s.bodyweight)
     .select((session) => ({
-      dateTime: session.date.atTime(12, 0), // Use noon for LocalDate
+      dateTime: session.date
+        .atTime(12, 0)
+        .atZone(ZoneId.systemDefault())
+        .toOffsetDateTime(), // Use noon for LocalDate
       value: session.bodyweight!,
     }))
-    .orderBy((x) => x.dateTime.toString())
     .toArray();
   // --- Bodyweight stats over time ---
-  const bodyweightStats: StatisticOverTime = {
-    title: 'Bodyweight',
-    statistics: bodyWeightStatistics,
-    minValue: bodyWeightStatistics.length
-      ? Weight.min(...bodyWeightStatistics.map((x) => x.value))
-      : Weight.NIL,
-    maxValue: bodyWeightStatistics.length
-      ? Weight.max(...bodyWeightStatistics.map((x) => x.value))
-      : Weight.NIL,
-  };
+  const bodyweightStats: WeightedStatisticOverTime =
+    unsortedStatsToWeightedStatisticOverTime(bodyWeightStatistics);
 
   // --- Session stats grouped by blueprint name ---
   const sessionStats: OptionalStatisticOverTime<Weight>[] = [];
@@ -80,7 +82,10 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
       .select((date) => {
         const session = group.find((s) => s.date.equals(date));
         return {
-          dateTime: date.atTime(12, 0),
+          dateTime: date
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toOffsetDateTime(),
           value: session ? session.totalWeightLifted : undefined,
         } satisfies TimeTrackedStatistic<Weight | undefined>;
       })
@@ -105,8 +110,10 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
   interface ExerciseStatAcc {
     exerciseName: string;
     statistics: TimeTrackedStatistic<Weight>[];
-    oneRepMaxStatistics: TimeTrackedStatistic<Weight>[];
-    allLifted: Weight[];
+    totalVolumeStatistics: TimeTrackedStatistic<Weight>[];
+    repsStatistics: RepsBreakdownStatistics;
+    currentOneRepMax: Weight;
+    latestTime: OffsetDateTime;
   }
   const exerciseStatsMap = new Map<string, ExerciseStatAcc>();
 
@@ -119,13 +126,16 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
         exerciseStatsMap.set(key, {
           exerciseName: blueprint.name,
           statistics: [],
-          oneRepMaxStatistics: [],
-          allLifted: [],
+          repsStatistics: { breakdown: {} },
+          totalVolumeStatistics: [],
+          currentOneRepMax: Weight.NIL,
+          latestTime: OffsetDateTime.MIN,
         });
       }
       if (!(ex instanceof RecordedWeightedExercise)) {
         continue;
       }
+      const exerciseStats = exerciseStatsMap.get(key)!;
       // Max weight lifted for this exercise in this session
       const maxWeight = ex.potentialSets
         .filter((ps) => ps.set)
@@ -137,98 +147,64 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
       if (!maxWeight) {
         continue;
       }
-      // One rep max formula (Epley): 1RM = weight * (1 + reps/30)
+
+      for (const set of ex.potentialSets) {
+        if (!set.set) {
+          continue;
+        }
+        exerciseStats.repsStatistics.breakdown[set.set.repsCompleted] ??= {
+          numberOfSets: 0,
+        };
+        exerciseStats.repsStatistics.breakdown[
+          set.set.repsCompleted
+        ].numberOfSets += 1;
+      }
+
       // We'll use the last set for this
       const lastSet = ex.lastRecordedSet!;
-      const reps = lastSet.set!.repsCompleted;
-      const weight = lastSet.weight;
-      const oneRepMax = weight.multipliedBy(
-        new BigNumber(1).plus(new BigNumber(reps).div(30)),
-      );
-
-      exerciseStatsMap.get(key)!.statistics.push({
+      if (exerciseStats.latestTime.isBefore(lastSet.set!.completionDateTime)) {
+        exerciseStats.latestTime = lastSet.set!.completionDateTime;
+        // One rep max formula (Epley): 1RM = weight * (1 + reps/30)
+        const reps = lastSet.set!.repsCompleted;
+        const weight = lastSet.weight;
+        const oneRepMax = weight.multipliedBy(
+          new BigNumber(1).plus(new BigNumber(reps).div(30)),
+        );
+        exerciseStats.currentOneRepMax = oneRepMax;
+      }
+      exerciseStats.statistics.push({
         dateTime: lastSet.set!.completionDateTime,
         value: maxWeight,
       });
-      exerciseStatsMap.get(key)!.oneRepMaxStatistics.push({
+      exerciseStats.totalVolumeStatistics.push({
         dateTime: lastSet.set!.completionDateTime,
-        value: oneRepMax,
+        value: ex.potentialSets
+          .filter((x) => x.set)
+          .reduce(
+            (accum, set) =>
+              set.weight.multipliedBy(set.set!.repsCompleted).plus(accum),
+            Weight.NIL,
+          ),
       });
-      exerciseStatsMap.get(key)!.allLifted.push(maxWeight);
     }
   }
 
-  const exerciseStats: ExerciseStatistics[] = Array.from(
+  const exerciseStats: WeightedExerciseStatistics[] = Array.from(
     exerciseStatsMap.values(),
   ).map((ex) => {
-    const statistics = Enumerable.from(ex.statistics)
-      .orderBy((x) => x.dateTime.toString())
-      .toArray();
-    const oneRepMaxStatistics = Enumerable.from(ex.oneRepMaxStatistics)
-      .orderBy((x) => x.dateTime.toString())
-      .toArray();
-    const max = statistics.length
-      ? Weight.max(
-          ...statistics.map((s) => s.value).filter((x) => x !== undefined),
-        )
-      : Weight.NIL;
-    const min = statistics.length
-      ? Weight.min(
-          ...statistics.map((s) => s.value).filter((x) => x !== undefined),
-        )
-      : Weight.NIL;
-    const oneRMmax = oneRepMaxStatistics.length
-      ? Weight.max(
-          ...oneRepMaxStatistics
-            .map((s) => s.value)
-            .filter((x) => x !== undefined),
-        )
-      : Weight.NIL;
-    const oneRMMin = oneRepMaxStatistics.length
-      ? Weight.min(
-          ...oneRepMaxStatistics
-            .map((s) => s.value)
-            .filter((x) => x !== undefined),
-        )
-      : Weight.NIL;
+    const maxLiftedPerSessionStatistics =
+      unsortedStatsToWeightedStatisticOverTime(ex.statistics);
     return {
       exerciseName: ex.exerciseName,
-      statistics: {
-        title: ex.exerciseName,
-        statistics,
-        maxValue: max,
-        minValue: min,
-      },
-      oneRepMaxStatistics: {
-        title: 'One rep max',
-        statistics: oneRepMaxStatistics,
-        maxValue: oneRMmax,
-        minValue: oneRMMin,
-      },
-      totalLifted: ex.allLifted.reduce((a, b) => a.plus(b), Weight.NIL),
-      max,
-      current: statistics.length
-        ? (statistics[statistics.length - 1].value ?? Weight.NIL)
-        : Weight.NIL,
-      oneRepMax: ex.oneRepMaxStatistics.length
-        ? (ex.oneRepMaxStatistics[ex.oneRepMaxStatistics.length - 1].value ??
-          Weight.NIL)
-        : Weight.NIL,
-    };
+      maxLiftedPerSessionStatistics,
+      oneRepMax: ex.currentOneRepMax,
+      totalVolumeStatistics: unsortedStatsToWeightedStatisticOverTime(
+        ex.totalVolumeStatistics,
+      ),
+      repsStatistics: ex.repsStatistics,
+    } satisfies WeightedExerciseStatistics;
   });
 
-  // --- Average time between sets ---
-  const allSetTimes: LocalDateTime[] = [];
-  for (const session of sessionsWithExercises) {
-    for (const ex of session.recordedExercises) {
-      if (ex instanceof RecordedWeightedExercise) {
-        for (const ps of ex.potentialSets) {
-          if (ps.set) allSetTimes.push(ps.set.completionDateTime);
-        }
-      }
-    }
-  }
-  allSetTimes.sort((a, b) => a.compareTo(b));
   // --- Average session length ---
   const sessionDurations: Duration[] = [];
   for (const session of sessionsWithExercises) {
@@ -265,15 +241,6 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
       }
     }
   }
-  let exerciseMostTimeSpent: TimeSpentExercise | undefined = undefined;
-  for (const val of exerciseTimeMap.values()) {
-    if (
-      !exerciseMostTimeSpent ||
-      val.timeSpent.compareTo(exerciseMostTimeSpent.timeSpent) > 0
-    ) {
-      exerciseMostTimeSpent = val;
-    }
-  }
 
   // --- Heaviest lift ---
   let heaviestLift: HeaviestLift | undefined = undefined;
@@ -306,41 +273,73 @@ function computeStats(sessions: Session[]): GranularStatisticView | undefined {
         })
         .select((x) => x.maxValue)
         .toArray(),
-    ),
+    ).convertTo(preferredUnit),
     averageSessionLength,
     heaviestLift,
-    exerciseMostTimeSpent,
-    exerciseStats,
+    weightedExerciseStats: exerciseStats,
     sessionStats,
     bodyweightStats,
   };
 }
 
 export function applyStatsEffects() {
-  addEffect(fetchOverallStats, async (action, { getState, dispatch }) => {
+  addEffect(fetchOverallStats, async (_, { getState, dispatch }) => {
     const state = getState();
 
     if (
-      state.stats.isLoading ||
+      state.stats.overallView.isLoading() ||
       !state.stats.isDirty ||
       !state.storedSessions.isHydrated
     ) {
       return;
     }
 
-    dispatch(setStatsIsLoading(true));
-
+    dispatch(setOverallStats(RemoteData.loading()));
+    await sleep(200);
     try {
       const stats = computeStats(
         selectSessionsBy(
           state,
-          LocalDate.now().minus(state.stats.overallViewTime),
-          state.stats.overallViewSessionName,
+          state.stats.overallViewTime.from,
+          state.stats.overallViewTime.to,
         ),
+        selectPreferredWeightUnit(state),
       );
-      dispatch(setOverallStats(stats));
-    } finally {
-      dispatch(setStatsIsLoading(false));
+      dispatch(setOverallStats(RemoteData.success(stats)));
+      dispatch(setStatsIsDirty(false));
+    } catch (e) {
+      dispatch(setOverallStats(RemoteData.error(e)));
     }
   });
+
+  addEffect(setOverallViewTime, async (_, { dispatch }) => {
+    dispatch(setStatsIsDirty(true));
+    dispatch(fetchOverallStats());
+  });
+}
+
+function unsortedStatsToWeightedStatisticOverTime(
+  unsortedStats: TimeTrackedStatistic<Weight>[],
+): WeightedStatisticOverTime {
+  const statistics = Enumerable.from(unsortedStats)
+    .orderBy((x) => x.dateTime.toString())
+    .toArray();
+  let max = Weight.NIL;
+  let min = Weight.NIL;
+  let total = Weight.NIL;
+
+  for (const stat of statistics) {
+    if (stat.value.isGreaterThan(max) || max.equals(Weight.NIL))
+      max = stat.value;
+    if (min.isGreaterThan(stat.value) || min.equals(Weight.NIL))
+      min = stat.value;
+    total = total.plus(stat.value);
+  }
+  return {
+    statistics,
+    currentValue: statistics.at(-1)?.value ?? Weight.NIL,
+    totalValue: total,
+    maxValue: max,
+    minValue: min,
+  };
 }

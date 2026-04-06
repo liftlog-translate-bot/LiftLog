@@ -1,7 +1,7 @@
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import LabelledForm from '@/components/presentation/labelled-form';
-import LabelledFormRow from '@/components/presentation/labelled-form-row';
-import { SurfaceText } from '@/components/presentation/surface-text';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import LabelledForm from '@/components/presentation/foundation/labelled-form';
+import LabelledFormRow from '@/components/presentation/foundation/labelled-form-row';
+import { SurfaceText } from '@/components/presentation/foundation/surface-text';
 import { spacing } from '@/hooks/useAppTheme';
 import { exportPlainText, PlaintextExportFormat } from '@/store/settings';
 import { T, useTranslate } from '@tolgee/react';
@@ -9,7 +9,7 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { Card } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { Dropdown } from 'react-native-paper-dropdown';
 import { useDispatch } from 'react-redux';
 
@@ -25,7 +25,7 @@ export default function PlainTextExportPage() {
   };
   return (
     <FullHeightScrollView>
-      <Stack.Screen options={{ title: t('PlaintextExport') }} />
+      <Stack.Screen options={{ title: t('backup.plaintext_export.title') }} />
       <Card
         mode="contained"
         style={{ marginHorizontal: spacing[6], marginBottom: spacing[4] }}
@@ -33,7 +33,7 @@ export default function PlainTextExportPage() {
         <Card.Content>
           <View>
             <SurfaceText style={{ textAlign: 'center' }}>
-              <T keyName="PlaintextExportDescription" />
+              <T keyName="backup.plaintext_export.explanation" />
             </SurfaceText>
           </View>
           <Button
@@ -43,13 +43,13 @@ export default function PlainTextExportPage() {
               )
             }
           >
-            <T keyName="ReadDocumentation" />
+            <T keyName="generic.read_documentation.button" />
           </Button>
         </Card.Content>
       </Card>
       <LabelledForm>
         <LabelledFormRow
-          label={t('PlaintextExportFormat')}
+          label={t('backup.plaintext_export.format.label')}
           icon={'descriptionFill'}
         >
           <Dropdown
@@ -72,7 +72,7 @@ export default function PlainTextExportPage() {
         }}
       >
         <Button mode="contained" onPress={exportData}>
-          <T keyName="Export" />
+          <T keyName="generic.export.button" />
         </Button>
       </View>
     </FullHeightScrollView>

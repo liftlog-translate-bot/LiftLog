@@ -9,7 +9,7 @@ import { View } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
 import { Dialog, List, Portal, RadioButton, Text } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 
 type CopyWorkoutDialogProps = {
   visible: boolean;
@@ -47,7 +47,7 @@ export default function CopyWorkoutDialog({
 
       dispatch(
         showSnackbar({
-          text: t('Workout copied to {planName}', {
+          text: t('workout.copied_to_plan.message', {
             planName: targetProgram?.program.name,
           }),
         }),
@@ -80,19 +80,19 @@ export default function CopyWorkoutDialog({
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
         <Dialog.Title>
-          <T keyName="Copy workout to plan" />
+          <T keyName="workout.copy_to_plan.button" />
         </Dialog.Title>
         <Dialog.Content>
           <View style={{ gap: spacing[2] }}>
             <Text variant="bodyMedium">
               <T
-                keyName="Select a plan to copy {workoutName} to"
+                keyName="workout.copy_to_plan.select_plan.label"
                 params={{ workoutName: sessionBlueprint.name }}
               />
             </Text>
             {otherPrograms.length === 0 ? (
               <Text variant="bodyMedium" style={{ fontStyle: 'italic' }}>
-                <T keyName="No other plans available" />
+                <T keyName="plan.no_other_available.message" />
               </Text>
             ) : (
               <View style={{ maxHeight: 200 }}>
@@ -107,13 +107,13 @@ export default function CopyWorkoutDialog({
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={onDismiss}>
-            <T keyName="Cancel" />
+            <T keyName="generic.cancel.button" />
           </Button>
           <Button
             onPress={handleCopy}
             disabled={!selectedProgramId || otherPrograms.length === 0}
           >
-            <T keyName="Copy" />
+            <T keyName="generic.copy.button" />
           </Button>
         </Dialog.Actions>
       </Dialog>

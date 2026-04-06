@@ -1,7 +1,18 @@
+import { LiftLog } from '@/gen/proto';
 import { DeepOmit } from '@/utils/deep-omit';
 import { Duration, LocalDate } from '@js-joda/core';
 import BigNumber from 'bignumber.js';
 import { match, P } from 'ts-pattern';
+import {
+  toDateOnlyDao,
+  toDecimalDao,
+  toDurationDao,
+} from './storage/conversions.to-dao';
+import {
+  fromDateOnlyDao,
+  fromDecimalDao,
+  fromDurationDao,
+} from './storage/conversions.from-dao';
 
 export interface ProgramBlueprintPOJO {
   type: 'ProgramBlueprint';
@@ -14,24 +25,14 @@ export class ProgramBlueprint {
   readonly name: string;
   readonly sessions: SessionBlueprint[];
   lastEdited: LocalDate;
-
-  /**
-   * @deprecated please use full constructor. Here only for serialization
-   */
-  constructor();
   constructor(
     name: string,
     sessions: SessionBlueprint[],
     lastEdited: LocalDate,
-  );
-  constructor(
-    name?: string,
-    sessions?: SessionBlueprint[],
-    lastEdited?: LocalDate,
   ) {
-    this.name = name!;
-    this.sessions = sessions!;
-    this.lastEdited = lastEdited!;
+    this.name = name;
+    this.sessions = sessions;
+    this.lastEdited = lastEdited;
   }
 
   static fromPOJO(pojo: Omit<ProgramBlueprintPOJO, 'type'>): ProgramBlueprint {
@@ -69,6 +70,24 @@ export class ProgramBlueprint {
     };
   }
 
+  toDao(): LiftLog.Ui.Models.ProgramBlueprintDao.ProgramBlueprintDaoV1 {
+    return new LiftLog.Ui.Models.ProgramBlueprintDao.ProgramBlueprintDaoV1({
+      name: this.name,
+      sessions: this.sessions.map((x) => x.toDao()),
+      lastEdited: toDateOnlyDao(this.lastEdited),
+    });
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.ProgramBlueprintDao.IProgramBlueprintDaoV1,
+  ): ProgramBlueprint {
+    return new ProgramBlueprint(
+      dao.name!,
+      dao.sessions!.map((x) => SessionBlueprint.fromDao(x)),
+      dao.lastEdited ? fromDateOnlyDao(dao.lastEdited) : LocalDate.now(),
+    );
+  }
+
   with(other: Partial<ProgramBlueprintPOJO>): ProgramBlueprint {
     return new ProgramBlueprint(
       other.name ?? this.name,
@@ -92,12 +111,7 @@ export class SessionBlueprint {
   readonly exercises: ExerciseBlueprint[];
   readonly notes: string;
 
-  /**
-   * @deprecated please use full constructor. Here only for serialization
-   */
-  constructor();
-  constructor(name: string, exercises: ExerciseBlueprint[], notes: string);
-  constructor(name?: string, exercises?: ExerciseBlueprint[], notes?: string) {
+  constructor(name: string, exercises: ExerciseBlueprint[], notes: string) {
     this.name = name!;
     this.exercises = exercises!;
     this.notes = notes!;
@@ -136,6 +150,24 @@ export class SessionBlueprint {
       exercises: this.exercises.map((exercise) => exercise.toPOJO()),
       notes: this.notes,
     };
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionBlueprintDao.SessionBlueprintDaoV2 {
+    return new LiftLog.Ui.Models.SessionBlueprintDao.SessionBlueprintDaoV2({
+      name: this.name,
+      exerciseBlueprints: this.exercises.map((x) => x.toDao()),
+      notes: this.notes,
+    });
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionBlueprintDao.ISessionBlueprintDaoV2,
+  ): SessionBlueprint {
+    return new SessionBlueprint(
+      dao.name!,
+      dao.exerciseBlueprints!.map((x) => fromExerciseBlueprintDao(x)),
+      dao.notes ?? '',
+    );
   }
 
   with(
@@ -200,88 +232,192 @@ export type Distance = {
 
 export type CardioTarget = TimeCardioTarget | DistanceCardioTarget;
 
-export interface CardioExerciseBlueprintPOJO {
-  type: 'CardioExerciseBlueprint';
-  name: string;
-  target: CardioTarget;
-  trackDuration: boolean;
-  trackDistance: boolean;
-  trackResistance: boolean;
-  trackIncline: boolean;
-  notes: string;
-  link: string;
+export function matchCardioTarget<T>(
+  value: CardioTarget,
+  matcher: {
+    [k in CardioTarget['type']]: (val: Extract<CardioTarget, { type: k }>) => T;
+  },
+) {
+  return match(value)
+    .with({ type: 'time' }, matcher.time)
+    .with({ type: 'distance' }, matcher.distance)
+    .exhaustive();
 }
-export class CardioExerciseBlueprint {
-  readonly name: string;
+
+export interface CardioExerciseSetBlueprintPOJO {
+  type: 'CardioExerciseSetBlueprint';
+
   readonly target: CardioTarget;
-  readonly notes: string;
-  readonly link: string;
   readonly trackDuration: boolean;
   readonly trackDistance: boolean;
   readonly trackResistance: boolean;
   readonly trackIncline: boolean;
+  readonly trackWeight: boolean;
+  readonly trackSteps: boolean;
+}
 
-  /**
-   * @deprecated please use full constructor. Here only for serialization
-   */
-  constructor();
+export class CardioExerciseSetBlueprint {
   constructor(
-    name: string,
+    readonly target: CardioTarget,
+    readonly trackDuration: boolean,
+    readonly trackDistance: boolean,
+    readonly trackResistance: boolean,
+    readonly trackIncline: boolean,
+    readonly trackWeight: boolean,
+    readonly trackSteps: boolean,
+  ) {}
+  static empty() {
+    return new CardioExerciseSetBlueprint(
+      {
+        type: 'time',
+        value: Duration.ofMinutes(30),
+      },
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+    );
+  }
+
+  static fromPOJO(
+    pojo: DeepOmit<CardioExerciseSetBlueprintPOJO, 'type'> &
+      Pick<CardioExerciseSetBlueprintPOJO, 'target'>,
+  ): CardioExerciseSetBlueprint {
+    return new CardioExerciseSetBlueprint(
+      pojo.target,
+      pojo.trackDuration,
+      pojo.trackDistance,
+      pojo.trackResistance,
+      pojo.trackIncline,
+      pojo.trackWeight,
+      pojo.trackSteps,
+    );
+  }
+
+  toPOJO(): CardioExerciseSetBlueprintPOJO {
+    return {
+      type: 'CardioExerciseSetBlueprint',
+      target: this.target,
+      trackDistance: this.trackDistance,
+      trackDuration: this.trackDuration,
+      trackIncline: this.trackIncline,
+      trackResistance: this.trackResistance,
+      trackWeight: this.trackWeight,
+      trackSteps: this.trackSteps,
+    };
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionBlueprintDao.ICardioExerciseSetBlueprintDao,
+  ): CardioExerciseSetBlueprint {
+    return CardioExerciseSetBlueprint.fromPOJO({
+      target: fromCardioTargetDao(dao.cardioTarget),
+      trackDuration: dao.trackDuration ?? false,
+      trackDistance: dao.trackDistance ?? false,
+      trackResistance: dao.trackResistance ?? false,
+      trackIncline: dao.trackIncline ?? false,
+      trackWeight: dao.trackWeight ?? false,
+      trackSteps: dao.trackSteps ?? false,
+    });
+  }
+
+  toDao(): LiftLog.Ui.Models.SessionBlueprintDao.CardioExerciseSetBlueprintDao {
+    return new LiftLog.Ui.Models.SessionBlueprintDao.CardioExerciseSetBlueprintDao(
+      {
+        cardioTarget: this.toCardioTargetDao(this.target),
+        trackDuration: this.trackDuration,
+        trackDistance: this.trackDistance,
+        trackResistance: this.trackResistance,
+        trackIncline: this.trackIncline,
+        trackWeight: this.trackWeight,
+        trackSteps: this.trackSteps,
+      },
+    );
+  }
+
+  private toCardioTargetDao(
     target: CardioTarget,
-    trackDuration: boolean,
-    trackDistance: boolean,
-    trackResistance: boolean,
-    trackIncline: boolean,
-    notes: string,
-    link: string,
-  );
+  ): LiftLog.Ui.Models.SessionBlueprintDao.CardioTarget {
+    return new LiftLog.Ui.Models.SessionBlueprintDao.CardioTarget({
+      type: target.type,
+      distanceValue:
+        target.type === 'distance' ? toDecimalDao(target.value.value) : null,
+      distanceUnit: target.type === 'distance' ? target.value.unit : null,
+      timeValue: target.type === 'time' ? toDurationDao(target.value) : null,
+    });
+  }
+
+  equals(
+    other:
+      | CardioExerciseSetBlueprint
+      | CardioExerciseSetBlueprintPOJO
+      | undefined,
+  ): boolean {
+    if (!other) {
+      return false;
+    }
+    return (
+      this.trackDistance === other.trackDistance &&
+      this.trackDuration === other.trackDuration &&
+      this.trackIncline === other.trackIncline &&
+      this.trackResistance === other.trackResistance &&
+      cardioTargetEquals(this.target, other.target)
+    );
+  }
+
+  with(
+    other:
+      | Partial<CardioExerciseSetBlueprint>
+      | Partial<CardioExerciseSetBlueprintPOJO>,
+  ): CardioExerciseSetBlueprint {
+    return new CardioExerciseSetBlueprint(
+      other.target ?? this.target,
+      other.trackDuration ?? this.trackDuration,
+      other.trackDistance ?? this.trackDistance,
+      other.trackResistance ?? this.trackResistance,
+      other.trackIncline ?? this.trackIncline,
+      other.trackWeight ?? this.trackWeight,
+      other.trackSteps ?? this.trackSteps,
+    );
+  }
+}
+
+export interface CardioExerciseBlueprintPOJO {
+  type: 'CardioExerciseBlueprint';
+  name: string;
+  sets: CardioExerciseSetBlueprintPOJO[];
+  notes: string;
+  link: string;
+}
+export class CardioExerciseBlueprint {
   constructor(
-    name?: string,
-    target?: CardioTarget,
-    trackDuration?: boolean,
-    trackDistance?: boolean,
-    trackResistance?: boolean,
-    trackIncline?: boolean,
-    notes?: string,
-    link?: string,
+    readonly name: string,
+    readonly sets: CardioExerciseSetBlueprint[],
+    readonly notes: string,
+    readonly link: string,
   ) {
-    this.name = name!;
-    this.target = target!;
-    this.trackDuration = trackDuration!;
-    this.trackDistance = trackDistance!;
-    this.trackResistance = trackResistance!;
-    this.trackIncline = trackIncline!;
-    this.notes = notes!;
-    this.link = link!;
+    if (!sets.length) {
+      throw new Error('Must have at least one set in cardio exercise');
+    }
   }
 
   static empty() {
     return new CardioExerciseBlueprint(
       '',
-      {
-        type: 'time',
-        value: Duration.ofMinutes(30),
-      },
-      true,
-      false,
-      false,
-      false,
+      [CardioExerciseSetBlueprint.empty()],
       '',
       '',
     );
   }
 
   static fromPOJO(
-    pojo: DeepOmit<CardioExerciseBlueprintPOJO, 'type'> &
-      Pick<CardioExerciseBlueprintPOJO, 'target'>,
+    pojo: CardioExerciseBlueprintPOJO | CardioExerciseBlueprint,
   ): CardioExerciseBlueprint {
     return new CardioExerciseBlueprint(
       pojo.name,
-      pojo.target,
-      pojo.trackDuration,
-      pojo.trackDistance,
-      pojo.trackResistance,
-      pojo.trackIncline,
+      pojo.sets.map((x) => CardioExerciseSetBlueprint.fromPOJO(x)),
       pojo.notes,
       pojo.link,
     );
@@ -302,14 +438,8 @@ export class CardioExerciseBlueprint {
     }
     return (
       this.name === other.name &&
-      this.target.type === other.target.type &&
-      ((this.target.type === 'distance' &&
-        other.target.type === 'distance' &&
-        this.target.value.value.eq(other.target.value.value) &&
-        this.target.value.unit === other.target.value.unit) ||
-        (this.target.type === 'time' &&
-          other.target.type === 'time' &&
-          this.target.value.equals(other.target.value))) &&
+      this.sets.length === other.sets.length &&
+      this.sets.every((set, index) => set.equals(other.sets[index])) &&
       this.notes === other.notes &&
       this.link === other.link
     );
@@ -319,24 +449,49 @@ export class CardioExerciseBlueprint {
     return {
       type: 'CardioExerciseBlueprint',
       name: this.name,
-      target: this.target,
-      trackDuration: this.trackDuration,
-      trackDistance: this.trackDistance,
-      trackResistance: this.trackResistance,
-      trackIncline: this.trackIncline,
+      sets: this.sets.map((x) => x.toPOJO()),
       notes: this.notes,
       link: this.link,
     };
   }
 
+  toDao(): LiftLog.Ui.Models.SessionBlueprintDao.ExerciseBlueprintDaoV2 {
+    const sets = this.sets.map((x) => x.toDao());
+    return new LiftLog.Ui.Models.SessionBlueprintDao.ExerciseBlueprintDaoV2({
+      name: this.name,
+      notes: this.notes,
+      link: this.link,
+      type: LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO,
+      cardioSets: sets,
+      deprecatedCardioTarget: null,
+      deprecatedTrackDuration: null,
+      deprecatedTrackDistance: null,
+      deprecatedTrackResistance: null,
+      deprecatedTrackIncline: null,
+    });
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2,
+  ): CardioExerciseBlueprint {
+    const sets = dao.cardioSets!.map((x) =>
+      CardioExerciseSetBlueprint.fromDao(x),
+    );
+    return new CardioExerciseBlueprint(
+      dao.name!,
+      sets.length === 0
+        ? [getCardioBlueprintSetFromDeprecatedFields(dao)]
+        : sets,
+      dao.notes ?? '',
+      dao.link ?? '',
+    );
+  }
+
   with(other: Partial<CardioExerciseBlueprintPOJO>): CardioExerciseBlueprint {
     return new CardioExerciseBlueprint(
       other.name ?? this.name,
-      other.target ?? this.target,
-      other.trackDuration ?? this.trackDuration,
-      other.trackDistance ?? this.trackDistance,
-      other.trackResistance ?? this.trackResistance,
-      other.trackIncline ?? this.trackIncline,
+      other.sets?.map((x) => CardioExerciseSetBlueprint.fromPOJO(x)) ??
+        this.sets,
       other.notes ?? this.notes,
       other.link ?? this.link,
     );
@@ -365,10 +520,6 @@ export class WeightedExerciseBlueprint {
   readonly notes: string;
   readonly link: string;
 
-  /**
-   * @deprecated please use full constructor. Here only for serialization
-   */
-  constructor();
   constructor(
     name: string,
     sets: number,
@@ -378,25 +529,15 @@ export class WeightedExerciseBlueprint {
     supersetWithNext: boolean,
     notes: string,
     link: string,
-  );
-  constructor(
-    name?: string,
-    sets?: number,
-    repsPerSet?: number,
-    weightIncreaseOnSuccess?: BigNumber,
-    restBetweenSets?: Rest,
-    supersetWithNext?: boolean,
-    notes?: string,
-    link?: string,
   ) {
-    this.name = name!;
-    this.sets = sets!;
-    this.repsPerSet = repsPerSet!;
-    this.weightIncreaseOnSuccess = weightIncreaseOnSuccess!;
-    this.restBetweenSets = restBetweenSets!;
-    this.supersetWithNext = supersetWithNext!;
-    this.notes = notes!;
-    this.link = link!;
+    this.name = name;
+    this.sets = sets;
+    this.repsPerSet = repsPerSet;
+    this.weightIncreaseOnSuccess = weightIncreaseOnSuccess;
+    this.restBetweenSets = restBetweenSets;
+    this.supersetWithNext = supersetWithNext;
+    this.notes = notes;
+    this.link = link;
   }
 
   static empty() {
@@ -471,6 +612,35 @@ export class WeightedExerciseBlueprint {
     };
   }
 
+  toDao(): LiftLog.Ui.Models.SessionBlueprintDao.ExerciseBlueprintDaoV2 {
+    return new LiftLog.Ui.Models.SessionBlueprintDao.ExerciseBlueprintDaoV2({
+      name: this.name,
+      notes: this.notes,
+      link: this.link,
+      type: LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.WEIGHTED,
+      sets: this.sets,
+      repsPerSet: this.repsPerSet,
+      weightIncreaseOnSuccess: toDecimalDao(this.weightIncreaseOnSuccess),
+      restBetweenSets: toRestDao(this.restBetweenSets),
+      supersetWithNext: this.supersetWithNext,
+    });
+  }
+
+  static fromDao(
+    dao: LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2,
+  ): WeightedExerciseBlueprint {
+    return new WeightedExerciseBlueprint(
+      dao.name!,
+      dao.sets!,
+      dao.repsPerSet!,
+      fromDecimalDao(dao.weightIncreaseOnSuccess) ?? BigNumber(0),
+      fromRestDao(dao.restBetweenSets),
+      dao.supersetWithNext ?? false,
+      dao.notes ?? '',
+      dao.link ?? '',
+    );
+  }
+
   with(
     other: Partial<WeightedExerciseBlueprintPOJO>,
   ): WeightedExerciseBlueprint {
@@ -501,7 +671,10 @@ export class KeyedExerciseBlueprint {
           P.instanceOf(WeightedExerciseBlueprint),
           (ex) => `${ex.sets}_${ex.repsPerSet}`,
         )
-        .with(P.instanceOf(CardioExerciseBlueprint), (t) => t.target.type)
+        .with(
+          P.instanceOf(CardioExerciseBlueprint),
+          (t) => t.sets[0]?.target.type ?? 'distance',
+        )
         .exhaustive(),
     );
   }
@@ -521,6 +694,10 @@ export class NormalizedName {
 
   toString(): NormalizedNameKey {
     return NormalizedName.normalizeName(this.name);
+  }
+
+  equals(other: NormalizedName) {
+    return other.toString() === this.toString();
   }
 
   private static normalizeName(name?: string): string {
@@ -575,3 +752,81 @@ export const EmptyExerciseBlueprint = new WeightedExerciseBlueprint(
   '',
   '',
 );
+
+export function cardioTargetEquals(a: CardioTarget, b: CardioTarget): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type === 'time' && b.type === 'time') {
+    return a.value.equals(b.value);
+  }
+  if (a.type === 'distance' && b.type === 'distance') {
+    return a.value.value.eq(b.value.value) && a.value.unit === b.value.unit;
+  }
+  return false;
+}
+
+function toRestDao(
+  model: Rest,
+): LiftLog.Ui.Models.SessionBlueprintDao.RestDaoV2 {
+  return new LiftLog.Ui.Models.SessionBlueprintDao.RestDaoV2({
+    minRest: toDurationDao(model.minRest),
+    maxRest: toDurationDao(model.maxRest),
+    failureRest: toDurationDao(model.failureRest),
+  });
+}
+
+export function fromRestDao(
+  dao: LiftLog.Ui.Models.SessionBlueprintDao.IRestDaoV2 | null | undefined,
+): Rest {
+  return {
+    minRest: fromDurationDao(dao?.minRest) ?? Duration.ZERO,
+    maxRest: fromDurationDao(dao?.maxRest) ?? Duration.ZERO,
+    failureRest: fromDurationDao(dao?.failureRest) ?? Duration.ZERO,
+  };
+}
+
+export function fromExerciseBlueprintDao(
+  dao:
+    | LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2
+    | null
+    | undefined,
+): ExerciseBlueprint {
+  if (!dao) {
+    throw new Error('ExerciseBlueprint dao should not be null');
+  }
+  if (dao.type === LiftLog.Ui.Models.SessionBlueprintDao.ExerciseType.CARDIO) {
+    return CardioExerciseBlueprint.fromDao(dao);
+  }
+  return WeightedExerciseBlueprint.fromDao(dao);
+}
+
+function getCardioBlueprintSetFromDeprecatedFields(
+  dao: LiftLog.Ui.Models.SessionBlueprintDao.IExerciseBlueprintDaoV2,
+): CardioExerciseSetBlueprint {
+  return CardioExerciseSetBlueprint.fromPOJO({
+    target: fromCardioTargetDao(dao.deprecatedCardioTarget),
+    trackDuration: dao.deprecatedTrackDuration ?? false,
+    trackDistance: dao.deprecatedTrackDistance ?? false,
+    trackResistance: dao.deprecatedTrackResistance ?? false,
+    trackIncline: dao.deprecatedTrackIncline ?? false,
+    trackWeight: false,
+    trackSteps: false,
+  });
+}
+
+function fromCardioTargetDao(
+  dao: LiftLog.Ui.Models.SessionBlueprintDao.ICardioTarget | null | undefined,
+): CardioTarget {
+  if (!dao) {
+    throw new Error('Expected a non null cardio target');
+  }
+  return {
+    type: dao.type as CardioTarget['type'],
+    value: match(dao.type as CardioTarget['type'])
+      .with('distance', () => ({
+        value: fromDecimalDao(dao.distanceValue) ?? BigNumber(0),
+        unit: dao.distanceUnit ?? 'metre',
+      }))
+      .with('time', () => fromDurationDao(dao.timeValue))
+      .exhaustive(),
+  } as CardioTarget;
+}

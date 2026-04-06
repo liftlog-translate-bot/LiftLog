@@ -1,14 +1,14 @@
-import CardActions from '@/components/presentation/card-actionts';
-import CardList from '@/components/presentation/card-list';
-import ConfirmationDialog from '@/components/presentation/confirmation-dialog';
-import EmptyInfo from '@/components/presentation/empty-info';
-import FullHeightScrollView from '@/components/presentation/full-height-scroll-view';
-import IconButton from '@/components/presentation/gesture-wrappers/icon-button';
-import HistoryCalendarCard from '@/components/presentation/history-calendar-card';
-import LimitedHtml from '@/components/presentation/limited-html';
-import SessionSummary from '@/components/presentation/session-summary';
-import SessionSummaryTitle from '@/components/presentation/session-summary-title';
-import SplitCardControl from '@/components/presentation/split-card-control';
+import CardActions from '@/components/presentation/foundation/card-actions';
+import CardList from '@/components/presentation/foundation/card-list';
+import ConfirmationDialog from '@/components/presentation/foundation/confirmation-dialog';
+import EmptyInfo from '@/components/presentation/foundation/empty-info';
+import FullHeightScrollView from '@/components/layout/full-height-scroll-view';
+import IconButton from '@/components/presentation/foundation/gesture-wrappers/icon-button';
+import HistoryCalendarCard from '@/components/presentation/summary/history-calendar-card';
+import LimitedHtml from '@/components/presentation/foundation/limited-html';
+import SessionSummary from '@/components/presentation/summary/session-summary';
+import SessionSummaryTitle from '@/components/presentation/summary/session-summary-title';
+import SplitCardControl from '@/components/presentation/foundation/split-card-control';
 import { spacing } from '@/hooks/useAppTheme';
 import { Session } from '@/models/session-models';
 import { useAppSelector, useAppSelectorWithArg } from '@/store';
@@ -16,25 +16,27 @@ import {
   selectCurrentSession,
   setCurrentSession,
 } from '@/store/current-session';
-import { addUnpublishedSessionId } from '@/store/feed';
+import { addUnpublishedSessionId, encryptAndShare } from '@/store/feed';
 import {
   deleteStoredSession,
   selectSessions,
   selectSessionsInMonth,
 } from '@/store/stored-sessions';
-import { formatDate } from '@/utils/format-date';
 import { uuid } from '@/utils/uuid';
 import { LocalDate, YearMonth } from '@js-joda/core';
 import { T, useTranslate } from '@tolgee/react';
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Card, Tooltip } from 'react-native-paper';
-import Button from '@/components/presentation/gesture-wrappers/button';
+import Button from '@/components/presentation/foundation/gesture-wrappers/button';
 import { useDispatch } from 'react-redux';
+import { useFormatDate } from '@/hooks/useFormatDate';
+import { SharedSession } from '@/models/feed-models';
 
 export default function History() {
   const { t } = useTranslate();
   const dispatch = useDispatch();
+  const formatDate = useFormatDate();
   const [currentYearMonth, setCurrentYearMonth] = useState(YearMonth.now());
   const latesBodyweight = useAppSelector((x) =>
     x.program.upcomingSessions
@@ -99,11 +101,19 @@ export default function History() {
       push('/(tabs)/(session)/session', { withAnchor: true });
     }
   };
+  const handleSharePress = (session: Session) => {
+    dispatch(
+      encryptAndShare({
+        item: new SharedSession(session),
+        title: t('workout.shared_item.title'),
+      }),
+    );
+  };
   return (
     <>
       <Stack.Screen
         options={{
-          title: t('History'),
+          title: t('generic.history.title'),
         }}
       />
       <FullHeightScrollView
@@ -140,14 +150,21 @@ export default function History() {
           )}
           renderItemActions={(session) => (
             <CardActions style={{ marginTop: spacing[2] }}>
-              <Tooltip title={t('Start this workout')}>
+              <Tooltip title={t('workout.share_workout.button')}>
+                <IconButton
+                  icon={'share'}
+                  mode="contained"
+                  onPress={() => handleSharePress(session)}
+                />
+              </Tooltip>
+              <Tooltip title={t('workout.start_this.button')}>
                 <IconButton
                   mode="contained"
                   icon={'playCircle'}
                   onPress={() => startWorkout(session)}
                 />
               </Tooltip>
-              <Tooltip title={t('Delete')}>
+              <Tooltip title={t('generic.delete.button')}>
                 <IconButton
                   mode="contained"
                   icon={'delete'}
@@ -160,15 +177,15 @@ export default function History() {
                 mode="contained"
                 testID="history-edit-workout"
               >
-                <T keyName="Edit workout" />
+                <T keyName="workout.edit.button" />
               </Button>
             </CardActions>
           )}
           emptyTemplate={
             <EmptyInfo>
               <LimitedHtml
-                value={t('NoSessionsInMonth{Month}', {
-                  0: formatDate(currentYearMonth.atDay(1), {
+                value={t('workout.no_sessions_in_month.message', {
+                  month: formatDate(currentYearMonth.atDay(1), {
                     month: 'long',
                   }),
                 })}
@@ -178,12 +195,10 @@ export default function History() {
         />
       </FullHeightScrollView>
       <ConfirmationDialog
-        headline={t('Replace current workout?')}
-        textContent={t(
-          'There is already a workout in progress, replace it without saving?',
-        )}
+        headline={t('workout.replace_current.confirm.title')}
+        textContent={t('workout.replace_in_progress.confirm.body')}
         open={replaceCurrentSessionConfirmOpen}
-        okText={t('Replace')}
+        okText={t('generic.replace.button')}
         onOk={() => selectedWorkout && startWorkout(selectedWorkout, true)}
         onCancel={() => {
           setSelectedWorkout(undefined);
@@ -191,12 +206,12 @@ export default function History() {
         }}
       />
       <ConfirmationDialog
-        headline={t('DeleteSessionQuestion')}
+        headline={t('workout.delete.confirm.title')}
         textContent={
           <LimitedHtml
-            value={t('DeleteSessionMessage{SessionName}{Date}', {
-              SessionName: selectedWorkout?.blueprint.name ?? '',
-              Date: formatDate(selectedWorkout?.date ?? LocalDate.now(), {
+            value={t('workout.delete.confirm.body', {
+              sessionName: selectedWorkout?.blueprint.name ?? '',
+              date: formatDate(selectedWorkout?.date ?? LocalDate.now(), {
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric',
@@ -205,7 +220,7 @@ export default function History() {
           />
         }
         open={deleteSelectedWorkoutConfirmOpen}
-        okText={t('Delete')}
+        okText={t('generic.delete.button')}
         onOk={() => selectedWorkout && deleteWorkout(selectedWorkout, true)}
         onCancel={() => {
           setSelectedWorkout(undefined);
